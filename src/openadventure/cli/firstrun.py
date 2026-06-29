@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import getpass
 import os
 import sys
 from collections.abc import Callable
@@ -13,10 +12,11 @@ from rich.console import Console
 from openadventure.config import AppConfig, resolve_api_key
 
 
-def _getpass_secret(prompt_text: str) -> str | None:
-    """Read a secret key with no echo. None on Ctrl+D / Ctrl+C (treated as skip)."""
+def _read_key(prompt_text: str) -> str | None:
+    """Read an API key with a visible echo, so a paste can be eyeballed before
+    Enter. None on Ctrl+D / Ctrl+C (treated as skip)."""
     try:
-        return getpass.getpass(prompt_text).strip()
+        return input(prompt_text).strip()
     except EOFError, KeyboardInterrupt:
         return None
 
@@ -35,7 +35,7 @@ def prompt_and_store_key(
     *,
     label: str,
     env_var: str,
-    secret_prompt: Callable[[str], str | None] = _getpass_secret,
+    secret_prompt: Callable[[str], str | None] = _read_key,
     confirm_save: Callable[[], bool] = _confirm_save_to_env,
     set_env_on_decline: bool = True,
 ) -> str | None:
@@ -44,7 +44,7 @@ def prompt_and_store_key(
     ``secret_prompt`` reads the key (a falsy return means skip); ``confirm_save``
     decides whether to write it to .env. When the player declines, the key is put
     in ``os.environ`` if ``set_env_on_decline``, so the running process still sees
-    it. The defaults are the plain getpass/input prompts; the setup wizard passes
+    it. The defaults are the plain visible-echo prompts; the setup wizard passes
     its own, which raise to cancel the whole wizard on Ctrl+D. Returns the key, or
     None when skipped.
     """

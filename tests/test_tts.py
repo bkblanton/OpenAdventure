@@ -675,8 +675,10 @@ async def test_tts_command_prompts_for_elevenlabs_key(make_session, monkeypatch,
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    monkeypatch.setattr("getpass.getpass", lambda prompt: "el-test-key")
-    monkeypatch.setattr("builtins.input", lambda prompt: "")
+    # key prompt returns the key; the "save to .env?" prompt returns "" (yes)
+    monkeypatch.setattr(
+        "builtins.input", lambda prompt: "el-test-key" if "API key" in prompt else ""
+    )
 
     session = make_session(script=[])
     session.tts = ElevenLabsTTS()
@@ -693,8 +695,10 @@ async def test_sfx_command_prompts_for_elevenlabs_key(make_session, monkeypatch,
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    monkeypatch.setattr("getpass.getpass", lambda prompt: "el-sfx-key")
-    monkeypatch.setattr("builtins.input", lambda prompt: "")
+    # key prompt returns the key; the "save to .env?" prompt returns "" (yes)
+    monkeypatch.setattr(
+        "builtins.input", lambda prompt: "el-sfx-key" if "API key" in prompt else ""
+    )
 
     session = make_session(script=[])
     session.sound_effects = ElevenLabsSoundEffects()
@@ -724,8 +728,10 @@ def test_ensure_elevenlabs_api_key_sets_process_env(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    monkeypatch.setattr("getpass.getpass", lambda prompt: "el-direct-key")
-    monkeypatch.setattr("builtins.input", lambda prompt: "n")
+    # key prompt returns the key; the "save to .env?" prompt returns "n" (decline)
+    monkeypatch.setattr(
+        "builtins.input", lambda prompt: "el-direct-key" if "API key" in prompt else "n"
+    )
 
     key = ensure_elevenlabs_api_key(Console(record=True))
 

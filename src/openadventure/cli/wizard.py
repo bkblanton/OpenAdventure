@@ -8,7 +8,6 @@ is persisted to the campaign and applied immediately.
 from __future__ import annotations
 
 import asyncio
-import getpass
 import os
 import sys
 from pathlib import Path
@@ -61,8 +60,9 @@ def _ask_yes_no(label: str, default: bool) -> bool:
 
 
 def _ask_secret(label: str) -> str:
+    # Echo the key visibly (plain input, not getpass) so a paste can be verified.
     try:
-        return getpass.getpass(label).strip()
+        return input(label).strip()
     except EOFError, KeyboardInterrupt:
         raise _CancelWizard from None
 

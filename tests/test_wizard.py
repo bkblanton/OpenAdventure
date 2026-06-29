@@ -40,7 +40,7 @@ def test_input_skips_on_typed_skip(monkeypatch):
 
 
 def test_ask_secret_cancels_on_ctrl_d(monkeypatch):
-    monkeypatch.setattr(wizard.getpass, "getpass", _raise_eof)
+    monkeypatch.setattr("builtins.input", _raise_eof)
     with pytest.raises(wizard._CancelWizard):
         wizard._ask_secret("key: ")
 
@@ -109,20 +109,19 @@ def test_api_key_step_follows_the_selected_model_backend(make_session, monkeypat
 
     anthropic_model = next(m.id for m in session.models.models if m.provider == "anthropic")
     answers = iter([anthropic_model])  # choose it at the model step; Enter through the rest
-    monkeypatch.setattr("builtins.input", lambda prompt: next(answers, ""))
 
-    secret_prompts: list[str] = []
+    prompts: list[str] = []
 
-    def fake_getpass(label):
-        secret_prompts.append(label)
-        return ""  # skip entering a key, keeping the test side-effect free
+    def fake_input(prompt):
+        prompts.append(prompt)
+        return next(answers, "")  # an empty key at the secret step skips it (side-effect free)
 
-    monkeypatch.setattr(wizard.getpass, "getpass", fake_getpass)
+    monkeypatch.setattr("builtins.input", fake_input)
 
     wizard.run_setup_wizard(_console(), session, first_run=True)
 
     assert session.settings.model == anthropic_model  # model was set first
-    assert any("Anthropic" in p for p in secret_prompts)  # key asked for that backend
+    assert any("Anthropic" in p for p in prompts)  # key asked for that backend
 
 
 def test_steps_hint_their_in_play_command(make_session, monkeypatch):
