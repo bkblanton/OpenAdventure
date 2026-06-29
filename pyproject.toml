@@ -1,0 +1,50 @@
+[project]
+name = "openadventure"
+version = "0.1.0"
+description = "Play any tabletop RPG without a Game Master: an open-source AI harness with deterministic mechanics and agentic rules search."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Bryce Blanton", email = "bkblanton@users.noreply.github.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "anthropic>=0.109.1",
+    "prompt-toolkit>=3.0.52",
+    "pydantic>=2.13.4",
+    "pymupdf>=1.27.2.3",
+    "python-dotenv>=1.2.2",
+    "rich>=15.0.0",
+]
+
+[project.optional-dependencies]
+# Optional local embedding model for hybrid (semantic + keyword) search.
+# Install with: uv sync --extra embeddings
+embeddings = ["fastembed>=0.4"]
+
+[project.scripts]
+openadventure = "openadventure.cli.main:main"
+
+[build-system]
+requires = ["uv_build>=0.11.2,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.15.17",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
