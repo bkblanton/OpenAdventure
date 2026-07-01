@@ -39,7 +39,12 @@ class Verbosity(StrEnum):
 # /thinking, /verbosity, /context).
 class GenerationSettings(BaseModel):
     model: str = "claude-sonnet-5"
-    max_tokens: int = 8_000
+    # Output cap for a turn. With adaptive thinking the reasoning tokens and the
+    # visible response share this budget, so it must be generous enough that a
+    # high-effort, high-verbosity turn (e.g. rolling up a full party) can finish
+    # thinking AND still narrate — otherwise the turn hits max_tokens mid-thought
+    # and returns no text. 32k leaves ample room under every model's ceiling.
+    max_tokens: int = 32_000
     effort: Effort = Effort.low
     verbosity: Verbosity = Verbosity.medium
     thinking: bool = False
