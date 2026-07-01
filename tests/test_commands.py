@@ -31,7 +31,10 @@ def test_effort_rejects_bad_value_with_usage(make_session):
 
 def test_thinking_toggle_and_hint(make_session):
     session = make_session(script=[])
-    assert "Thinking is off" in _only(commands.cmd_thinking(session, "maybe")).text
+    # Thinking is on by default; an unrecognized arg returns the state hint.
+    assert "Thinking is on" in _only(commands.cmd_thinking(session, "maybe")).text
+    commands.cmd_thinking(session, "off")
+    assert session.settings.thinking is False
     commands.cmd_thinking(session, "on")
     assert session.settings.thinking is True
 

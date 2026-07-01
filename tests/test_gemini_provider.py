@@ -79,14 +79,14 @@ def test_high_effort_model_picks_its_own_backend():
 
 
 # --- request shaping ------------------------------------------------------
-def test_request_uses_minimal_thinking_by_default():
-    # Flash supports "minimal" (Gemini's "no thinking" floor), so the snappy
-    # default (thinking off) maps there rather than to "low".
+def test_request_uses_minimal_thinking_when_thinking_off():
+    # Flash supports "minimal" (Gemini's "no thinking" floor), so thinking off
+    # maps there rather than to "low".
     body = _provider()._request_body(
         system=[SystemBlock(text="be a GM")],
         messages=[Message(role="user", content=[TextBlock(text="hi")])],
         tools=[],
-        settings=GenerationSettings(model="gemini-3.5-flash"),
+        settings=GenerationSettings(model="gemini-3.5-flash", thinking=False),
     )
     assert body["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "minimal"}
     assert body["systemInstruction"] == {"parts": [{"text": "be a GM"}]}

@@ -34,9 +34,9 @@ class Verbosity(StrEnum):
 # Per-turn generation knobs, set individually (no bundled "quality" presets):
 # model picks the backend, effort/thinking trade latency for depth, and
 # context_budget caps the assembled prompt. The default model is Claude Sonnet 5
-# (the overall default); effort/thinking stay low/off so the real-time table
-# stays snappy, and any field is overridable per campaign (/model, /effort,
-# /thinking, /verbosity, /context).
+# (the overall default); effort/thinking default to high/on for depth (for
+# Anthropic models thinking maps to adaptive thinking), and any field is
+# overridable per campaign (/model, /effort, /thinking, /verbosity, /context).
 class GenerationSettings(BaseModel):
     model: str = "claude-sonnet-5"
     # Output cap for a turn. With adaptive thinking the reasoning tokens and the
@@ -45,9 +45,9 @@ class GenerationSettings(BaseModel):
     # thinking AND still narrate — otherwise the turn hits max_tokens mid-thought
     # and returns no text. 32k leaves ample room under every model's ceiling.
     max_tokens: int = 32_000
-    effort: Effort = Effort.low
+    effort: Effort = Effort.high
     verbosity: Verbosity = Verbosity.medium
-    thinking: bool = False
+    thinking: bool = True
     context_budget: int = 100_000  # target assembled-prompt tokens
 
     def merged(self, overrides: dict[str, Any]) -> GenerationSettings:

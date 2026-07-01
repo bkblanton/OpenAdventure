@@ -41,12 +41,13 @@ def test_registry_unknown_model_gets_safe_defaults():
     assert info.context_window == 200_000
 
 
-def test_default_settings_are_fast_and_cheap():
-    # The default table: Claude Sonnet 5, low effort, thinking off (no presets).
+def test_default_settings_are_accuracy_first():
+    # The default table: Claude Sonnet 5, high effort, thinking on (no presets).
+    # For Anthropic models thinking maps to adaptive thinking.
     s = GenerationSettings()
     assert s.model == "claude-sonnet-5"
-    assert s.effort == Effort.low
-    assert s.thinking is False
+    assert s.effort == Effort.high
+    assert s.thinking is True
     assert s.verbosity == Verbosity.medium
 
 
@@ -318,7 +319,9 @@ def test_anthropic_request_does_not_send_verbosity():
         messages=[],
         tools=[],
         # an Anthropic model (supports effort) so output_config is populated
-        settings=GenerationSettings(model="claude-opus-4-8", verbosity=Verbosity.low),
+        settings=GenerationSettings(
+            model="claude-opus-4-8", effort=Effort.low, verbosity=Verbosity.low
+        ),
         registry=ModelRegistry.load_default(),
     )
     assert kwargs["extra_body"]["output_config"] == {"effort": "low"}

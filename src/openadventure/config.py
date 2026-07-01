@@ -73,9 +73,10 @@ DEFAULT_CONFIG_TOML = """\
 
 [provider]
 # The model selects the backend automatically (see /model). Games default to
-# claude-sonnet-5 (Anthropic backend, low effort, thinking off). Set this to pin
-# a different default model; tune effort/thinking/context per campaign at play
-# time with /effort, /thinking, /context.
+# claude-sonnet-5 (Anthropic backend, high effort, thinking on — for Claude
+# models thinking maps to adaptive thinking). Set this to pin a different default
+# model; tune effort/thinking/context per campaign at play time with /effort,
+# /thinking, /context.
 # model = "gemini-3.5-flash"    # claude-* -> Anthropic, gemini-* -> Gemini
 
 # [auth]
