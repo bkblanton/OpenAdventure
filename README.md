@@ -78,7 +78,7 @@ uv run openadventure play curse-of-strahd
 - **Multi-module campaigns.** Chain several adventures into one arc; party, sheets, canon, and story summary carry across all of them. Only the module marked **NOW PLAYING** is canonical, so an unreached module can't leak its twists. The same ingested adventure can be a module in any number of campaigns.
 - **Undo & restart.** Every turn is checkpointed, so `/undo` rewinds the last ~30 turns completely (state and conversation), even across restarts. `/restart` archives the whole story and begins the campaign again, restoring or rerolling the party.
 - **Optional media.** TTS narration and sound effects (ElevenLabs), background music, and scene illustrations (Google Gemini "Nano Banana"). Each is opt-in via its slash command, which prompts for the relevant API key, and backends are swappable in `workspace/config.toml`.
-- **Tunable per campaign.** Every campaign starts on a fast, cheap default (Gemini 3.5 Flash, thinking off, 100k-token context) tuned for a snappy real-time table. Trade up for capability or depth with five knobs, each applied from the next turn: the AI model (`/model`), reasoning effort (`/effort`), extended thinking (`/thinking`), narration verbosity (`/verbosity`), and the context budget (`/context`).
+- **Tunable per campaign.** Every campaign starts on a capable default (Claude Sonnet 5 at high effort, thinking on — adaptive thinking for Claude models — with a 100k-token context) tuned for depth at the table. Dial it in with five knobs, each applied from the next turn: the AI model (`/model`), reasoning effort (`/effort`), extended thinking (`/thinking`), narration verbosity (`/verbosity`), and the context budget (`/context`).
 
 ## Getting help
 
