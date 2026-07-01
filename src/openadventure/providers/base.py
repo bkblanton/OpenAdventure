@@ -33,11 +33,12 @@ class Verbosity(StrEnum):
 
 # Per-turn generation knobs, set individually (no bundled "quality" presets):
 # model picks the backend, effort/thinking trade latency for depth, and
-# context_budget caps the assembled prompt. Defaults favor a snappy, cheap
-# real-time table (Gemini Flash, low effort, thinking off), and any field is
-# overridable per campaign (/model, /effort, /thinking, /verbosity, /context).
+# context_budget caps the assembled prompt. The default model is Claude Sonnet 5
+# (the overall default); effort/thinking stay low/off so the real-time table
+# stays snappy, and any field is overridable per campaign (/model, /effort,
+# /thinking, /verbosity, /context).
 class GenerationSettings(BaseModel):
-    model: str = "gemini-3.5-flash"
+    model: str = "claude-sonnet-5"
     max_tokens: int = 8_000
     effort: Effort = Effort.low
     verbosity: Verbosity = Verbosity.medium
@@ -52,15 +53,14 @@ class GenerationSettings(BaseModel):
 # One shared bundle for work that runs AWAY from the real-time table: one-time
 # character-template derivation, and the background "chronicler" that maintains
 # campaign canon. Both are off the hot path, so they can afford deeper reasoning
-# without the latency mattering. Keep the cheap Flash model (Pro buys little
-# quality here for a lot more money), but turn thinking on at high effort, which
-# the Gemini adapter maps to the deepest thinkingLevel ("high"). Staying on the
-# Gemini backend (the in-game default) means one GOOGLE_API_KEY covers the table
-# and these jobs, with no separate Anthropic key. Generous output room. Override
-# per workspace via config.toml [high_effort] (any GenerationSettings field; pin
-# a claude-* model to run these on Anthropic instead).
+# without the latency mattering. Run the same Claude Sonnet 5 as the overall
+# default, but turn thinking on at high effort. Staying on the Anthropic backend
+# (the in-game default) means one ANTHROPIC_API_KEY covers the table and these
+# jobs, with no separate key. Generous output room. Override per workspace via
+# config.toml [high_effort] (any GenerationSettings field; pin a gemini-* model
+# to run these on Gemini instead).
 HIGH_EFFORT_SETTINGS = GenerationSettings(
-    model="gemini-3.5-flash",
+    model="claude-sonnet-5",
     max_tokens=32_000,
     effort=Effort.high,
     thinking=True,
@@ -85,6 +85,12 @@ class ModelInfo(BaseModel):
     # The backend that serves this model. It is the model, not a separate
     # setting, that selects the provider, so picking a model picks its backend.
     provider: str = "anthropic"
+    # A superseded model kept only for backward compatibility. Still fully usable
+    # when pinned (config or /model) — the registry resolves it like any other —
+    # but hidden from the model lists the wizards and /model print, so it isn't
+    # offered to new picks. Deprecate an old model instead of deleting it so
+    # campaigns already on it keep working.
+    deprecated: bool = False
 
 
 def infer_provider(model_id: str) -> str:
@@ -110,6 +116,12 @@ class ModelRegistry(BaseModel):
             output_per_mtok=0.0,
             provider=infer_provider(model_id),
         )
+
+    @property
+    def visible(self) -> list[ModelInfo]:
+        """Models to offer in pick lists: everything except deprecated ones.
+        Deprecated models stay resolvable via ``get`` but aren't advertised."""
+        return [m for m in self.models if not m.deprecated]
 
     def provider_for(self, model_id: str) -> str:
         """The backend that serves ``model_id``: the seam's single source of

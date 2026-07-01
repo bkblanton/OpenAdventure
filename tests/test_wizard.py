@@ -798,11 +798,11 @@ def test_template_wizard_uses_default_model_non_interactive(config, monkeypatch)
 
     assert result is not None
     provider, settings = result
-    assert settings.model == "gemini-3.5-flash"  # the accuracy-first default
+    assert settings.model == "claude-sonnet-5"  # the accuracy-first default
     assert settings.thinking is True
     assert settings.effort.value == "high"  # always runs at high effort
-    assert asked["provider"] == "gemini"  # key resolved for the model's backend
-    assert provider == ("PROVIDER", "gemini", "key-1")
+    assert asked["provider"] == "anthropic"  # key resolved for the model's backend
+    assert provider == ("PROVIDER", "anthropic", "key-1")
 
 
 def test_template_wizard_in_game_reuses_table_model_without_prompt(config, monkeypatch):

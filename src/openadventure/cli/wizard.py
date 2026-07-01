@@ -41,8 +41,14 @@ def _input(prompt_text: str) -> str:
     return raw
 
 
-def _ask_choice(label: str, choices: list[str], default: str, console: Console) -> str:
-    raw = _input(f"{label} [{'/'.join(choices)}] ({default}): ").lower()
+def _ask_choice(
+    label: str, choices: list[str], default: str, console: Console, *, show_choices: bool = True
+) -> str:
+    # ``show_choices=False`` drops the inline ``[a/b/c]`` list from the prompt for
+    # choice sets that would grow too long to sit next to the input (e.g. models,
+    # which already print a full table above). Matching still uses ``choices``.
+    inline = f" [{'/'.join(choices)}]" if show_choices else ""
+    raw = _input(f"{label}{inline} ({default}): ").lower()
     if not raw:
         return default
     matches = [c for c in choices if c == raw] or [c for c in choices if c.startswith(raw)]
@@ -141,11 +147,13 @@ def _step_model(console: Console, session: GameSession) -> None:
         + _change_later("/model")
     )
     table = Table("model", "backend", "context", "~$/prompt")
-    ids = [m.id for m in session.models.models]
+    # Deprecated models stay usable when pinned but aren't offered here.
+    visible = session.models.visible
+    ids = [m.id for m in visible]
     # Measure the real non-tail prompt once (it barely varies by model) and reuse it
     # for every row's cost estimate, so no prompt-size estimate is needed.
     non_tail = session.non_tail_tokens()
-    for m in session.models.models:
+    for m in visible:
         marker = " [cyan]←[/cyan]" if m.id == current else ""
         table.add_row(
             m.id + marker,
@@ -154,7 +162,9 @@ def _step_model(console: Console, session: GameSession) -> None:
             f"${estimate_prompt_cost(session.settings, m, non_tail):.2f}",
         )
     console.print(table)
-    choice = _ask_choice("Model", ids, current, console)
+    # No inline [a/b/c] list next to the prompt: the model set grows too long for it,
+    # and the full table above already shows the choices.
+    choice = _ask_choice("Model", ids, current, console, show_choices=False)
     session.set_override("model", choice)
     console.print(f"[green]✓ Model set to {choice}.[/green]")
 
@@ -933,8 +943,10 @@ def run_template_wizard(
         )
         chosen = default_model
         if sys.stdin.isatty():
+            # Deprecated models stay usable when pinned but aren't offered here.
+            visible = models.visible
             table = Table("model", "backend", "context")
-            for m in models.models:
+            for m in visible:
                 label = m.id + (" [cyan](default)[/cyan]" if m.id == default_model else "")
                 table.add_row(label, m.provider, f"{m.context_window // 1000}k")
             console.print(table)
@@ -945,7 +957,7 @@ def run_template_wizard(
                 return None
             if raw:
                 lowered = raw.lower()
-                ids = [m.id for m in models.models]
+                ids = [m.id for m in visible]
                 matches = [i for i in ids if i == lowered] or [
                     i for i in ids if i.startswith(lowered)
                 ]

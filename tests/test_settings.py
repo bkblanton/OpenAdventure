@@ -14,14 +14,25 @@ from openadventure.providers.base import (
 
 def test_registry_loads_and_has_models():
     registry = ModelRegistry.load_default()
-    sonnet = registry.get("claude-sonnet-4-6")
+    sonnet = registry.get("claude-sonnet-5")
     assert sonnet.context_window == 1_000_000
     assert sonnet.supports_effort
     fable = registry.get("claude-fable-5")
     assert fable.supports_thinking
     assert fable.output_per_mtok == 50.0
-    # Haiku is not offered because it is too weak at tool use for this app.
-    assert "claude-haiku-4-5" not in {m.id for m in registry.models}
+    assert "claude-haiku-4-5" in {m.id for m in registry.models}
+
+
+def test_deprecated_models_resolve_but_are_hidden_from_lists():
+    registry = ModelRegistry.load_default()
+    # The old Sonnet is deprecated: still resolvable when pinned...
+    old = registry.get("claude-sonnet-4-6")
+    assert old.deprecated is True
+    assert registry.provider_for("claude-sonnet-4-6") == "anthropic"
+    # ...but kept out of the advertised (visible) list.
+    visible_ids = {m.id for m in registry.visible}
+    assert "claude-sonnet-4-6" not in visible_ids
+    assert "claude-sonnet-5" in visible_ids
 
 
 def test_registry_unknown_model_gets_safe_defaults():
@@ -31,9 +42,9 @@ def test_registry_unknown_model_gets_safe_defaults():
 
 
 def test_default_settings_are_fast_and_cheap():
-    # The default table: Gemini Flash, low effort, thinking off (no presets).
+    # The default table: Claude Sonnet 5, low effort, thinking off (no presets).
     s = GenerationSettings()
-    assert s.model == "gemini-3.5-flash"
+    assert s.model == "claude-sonnet-5"
     assert s.effort == Effort.low
     assert s.thinking is False
     assert s.verbosity == Verbosity.medium
@@ -41,13 +52,13 @@ def test_default_settings_are_fast_and_cheap():
 
 def test_high_effort_settings_are_accuracy_first_and_separate_from_the_table():
     # Off-hot-path work (template derivation, the canon chronicler) is not
-    # real-time, so unlike the default table it turns thinking ON at high effort
-    # (the deepest thinkingLevel), even though it runs the same cheap Flash model
-    # the table does. It stays on the Gemini backend (the in-game default) so one
-    # Google key serves the table and these jobs.
+    # real-time, so unlike the default table it turns thinking ON at high effort,
+    # even though it runs the same Claude Sonnet 5 the table does. It stays on the
+    # Anthropic backend (the in-game default) so one Anthropic key serves the
+    # table and these jobs.
     assert HIGH_EFFORT_SETTINGS.thinking is True
-    assert HIGH_EFFORT_SETTINGS.model == "gemini-3.5-flash"
-    assert ModelRegistry.load_default().provider_for(HIGH_EFFORT_SETTINGS.model) == "gemini"
+    assert HIGH_EFFORT_SETTINGS.model == "claude-sonnet-5"
+    assert ModelRegistry.load_default().provider_for(HIGH_EFFORT_SETTINGS.model) == "anthropic"
     assert HIGH_EFFORT_SETTINGS.effort == Effort.high
     # generous output room for a full template plus its thinking
     assert HIGH_EFFORT_SETTINGS.max_tokens >= 16_000
@@ -142,8 +153,8 @@ def test_set_high_effort_model_ignores_commented_default_example(tmp_path):
 
 
 def test_provider_for_settings_reuses_chat_provider_on_matching_backend(make_session):
-    # The chronicler's settings run on the same Gemini backend as the table, so it
-    # reuses the live provider rather than building a second one.
+    # The chronicler's settings run on the same Anthropic backend as the table
+    # default, so it reuses the live provider rather than building a second one.
     session = make_session(script=[])
     assert session.provider_for_settings(HIGH_EFFORT_SETTINGS) is session.provider
 

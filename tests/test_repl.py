@@ -934,7 +934,7 @@ async def test_model_same_backend_prompts_for_key_when_disconnected(make_session
 
 async def test_model_same_backend_stays_silent_when_connected(make_session, monkeypatch):
     # If already connected, switching models on the same backend touches nothing.
-    session = make_session(script=[])  # provider set (connected), gemini backend
+    session = make_session(script=[])  # provider set (connected), anthropic default backend
     monkeypatch.setattr(session, "connect_provider", lambda: pytest.fail("should not reconnect"))
     prompted = []
     monkeypatch.setattr(
@@ -944,7 +944,7 @@ async def test_model_same_backend_stays_silent_when_connected(make_session, monk
     out = StringIO()
     repl = Repl(Console(file=out, force_terminal=False, color_system=None), session)
 
-    await repl._cmd_model("gemini-3.1-pro-preview")
+    await repl._cmd_model("claude-opus-4-8")
 
     assert prompted == []
     text = out.getvalue().lower()

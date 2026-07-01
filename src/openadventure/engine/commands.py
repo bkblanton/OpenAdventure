@@ -208,8 +208,10 @@ def cmd_context(session: GameSession, args: str) -> CommandResult:
 
 def cmd_model(session: GameSession, args: str) -> CommandResult:
     if not args.strip():
+        # Only advertise non-deprecated models; a deprecated current id still shows
+        # via the renderer's "current not in list" fallback.
         return CommandResult(
-            data=ModelList(models=list(session.models.models), current=session.settings.model)
+            data=ModelList(models=session.models.visible, current=session.settings.model)
         )
     before = session.provider_name()
     try:

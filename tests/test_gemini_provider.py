@@ -46,10 +46,10 @@ def test_registry_maps_model_to_backend():
 
 def test_model_selects_backend_via_settings():
     registry = ModelRegistry.load_default()
-    # default (no model set) -> standard preset is Gemini Flash -> gemini backend
+    # default (no model set) -> overall default is Claude Sonnet 5 -> anthropic backend
     default = resolve_settings({}, AppConfig(workspace_dir="."), registry)
-    assert default.model == "gemini-3.5-flash"
-    assert registry.provider_for(default.model) == "gemini"
+    assert default.model == "claude-sonnet-5"
+    assert registry.provider_for(default.model) == "anthropic"
     # config model picks the model, which picks the backend
     claude = resolve_settings({}, AppConfig(workspace_dir=".", model="claude-opus-4-8"), registry)
     assert claude.model == "claude-opus-4-8"
@@ -67,15 +67,15 @@ def test_high_effort_model_picks_its_own_backend():
     from openadventure.engine.session import resolve_high_effort_settings
 
     registry = ModelRegistry.load_default()
-    # default high-effort model is Gemini 3.5 Flash -> gemini, independent of the campaign model
-    default = resolve_high_effort_settings(AppConfig(workspace_dir=".", model="claude-opus-4-8"))
-    assert default.model == "gemini-3.5-flash"
-    assert registry.provider_for(default.model) == "gemini"
-    # pin a claude high-effort model -> runs on the anthropic backend
+    # default high-effort model is Claude Sonnet 5 -> anthropic, independent of the campaign model
+    default = resolve_high_effort_settings(AppConfig(workspace_dir=".", model="gemini-3.5-flash"))
+    assert default.model == "claude-sonnet-5"
+    assert registry.provider_for(default.model) == "anthropic"
+    # pin a gemini high-effort model -> runs on the gemini backend
     pinned = resolve_high_effort_settings(
-        AppConfig(workspace_dir=".", high_effort={"model": "claude-opus-4-8"})
+        AppConfig(workspace_dir=".", high_effort={"model": "gemini-3.5-flash"})
     )
-    assert registry.provider_for(pinned.model) == "anthropic"
+    assert registry.provider_for(pinned.model) == "gemini"
 
 
 # --- request shaping ------------------------------------------------------
@@ -375,24 +375,25 @@ def test_connect_provider_without_key_disconnects(make_session, monkeypatch):
 
 
 async def test_cmd_model_switches_backend(make_session, monkeypatch):
-    # The default model is Gemini; switching to a Claude model flips the backend.
+    # The default model is Claude (anthropic); switching to a Gemini model flips
+    # the backend.
     from io import StringIO
 
     from rich.console import Console
 
     from openadventure.cli.repl import Repl
-    from openadventure.providers.anthropic_provider import AnthropicProvider
+    from openadventure.providers.gemini_provider import GeminiProvider
 
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "a-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "g-key")
     session = make_session(script=[])
-    assert session.provider_name() == "gemini"  # the new default
+    assert session.provider_name() == "anthropic"  # the new default
     out = StringIO()
     repl = Repl(Console(file=out, width=200), session)
 
-    await repl._cmd_model("claude-opus-4-8")
-    assert session.settings.model == "claude-opus-4-8"
-    assert isinstance(session.provider, AnthropicProvider)
-    assert "Backend switched to anthropic" in out.getvalue()
+    await repl._cmd_model("gemini-3.5-flash")
+    assert session.settings.model == "gemini-3.5-flash"
+    assert isinstance(session.provider, GeminiProvider)
+    assert "Backend switched to gemini" in out.getvalue()
 
 
 async def test_cmd_model_switch_without_key_warns(make_session, monkeypatch):
@@ -402,12 +403,13 @@ async def test_cmd_model_switch_without_key_warns(make_session, monkeypatch):
 
     from openadventure.cli.repl import Repl
 
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     session = make_session(script=[])
     out = StringIO()
     repl = Repl(Console(file=out, width=200), session)
 
-    await repl._cmd_model("claude-opus-4-8")  # anthropic, but no key set
+    await repl._cmd_model("gemini-3.5-flash")  # gemini, but no key set
     assert session.provider is None
     assert "no API key" in out.getvalue()
 

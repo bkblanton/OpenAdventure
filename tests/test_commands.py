@@ -53,17 +53,17 @@ def test_model_show_returns_payload_not_messages(make_session):
 
 
 def test_model_set_flags_backend_switch(make_session):
-    session = make_session(script=[])  # default gemini backend, provider connected
-    result = commands.cmd_model(session, "claude-opus-4-8")
+    session = make_session(script=[])  # default anthropic backend, provider connected
+    result = commands.cmd_model(session, "gemini-3.1-pro-preview")
     assert isinstance(result.data, commands.ModelChanged)
-    assert result.data.backend == "anthropic"
+    assert result.data.backend == "gemini"
     assert result.data.switched is True and result.data.needs_provider is True
-    assert session.settings.model == "claude-opus-4-8"
+    assert session.settings.model == "gemini-3.1-pro-preview"
 
 
 def test_model_set_same_backend_connected_needs_no_provider(make_session):
-    session = make_session(script=[])  # connected on gemini
-    result = commands.cmd_model(session, "gemini-3.1-pro-preview")
+    session = make_session(script=[])  # connected on the anthropic default
+    result = commands.cmd_model(session, "claude-opus-4-8")
     assert result.data.switched is False and result.data.needs_provider is False
 
 

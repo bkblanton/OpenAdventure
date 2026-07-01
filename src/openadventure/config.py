@@ -73,10 +73,10 @@ DEFAULT_CONFIG_TOML = """\
 
 [provider]
 # The model selects the backend automatically (see /model). Games default to
-# gemini-3.5-flash (Gemini backend, low effort, thinking off: fast and cheap).
-# Set this to pin a different default model; tune effort/thinking/context per
-# campaign at play time with /effort, /thinking, /context.
-# model = "claude-opus-4-8"     # claude-* -> Anthropic, gemini-* -> Gemini
+# claude-sonnet-5 (Anthropic backend, low effort, thinking off). Set this to pin
+# a different default model; tune effort/thinking/context per campaign at play
+# time with /effort, /thinking, /context.
+# model = "gemini-3.5-flash"    # claude-* -> Anthropic, gemini-* -> Gemini
 
 # [auth]
 # api_key = "sk-ant-..."        # prefer ANTHROPIC_API_KEY (or, for a gemini model,
@@ -88,10 +88,10 @@ DEFAULT_CONFIG_TOML = """\
 #                                 # this as the default and asks each run. In-game,
 #                                 # off-table work (templates + the canon chronicler)
 #                                 # uses the campaign's table model at high effort.
-# model = "gemini-3.5-flash"      # defaults: Gemini 3.5 Flash, thinking on at high
-#                                 # effort (the deepest thinkingLevel). Off the
-#                                 # real-time path. Same Google key as the in-game
-#                                 # default; pin a claude-* model to run on Anthropic.
+# model = "claude-sonnet-5"       # defaults: Claude Sonnet 5, thinking on at high
+#                                 # effort. Off the real-time path. Same Anthropic
+#                                 # key as the in-game default; pin a gemini-* model
+#                                 # to run on Gemini.
 # effort = "high"                 # low | medium | high | max
 # thinking = true                 # deeper reasoning, fine here since it isn't real-time
 # max_tokens = 32000

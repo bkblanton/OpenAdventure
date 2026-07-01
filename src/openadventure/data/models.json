@@ -1,6 +1,28 @@
 {
   "models": [
     {
+      "id": "claude-sonnet-5",
+      "display_name": "Claude Sonnet 5",
+      "context_window": 1000000,
+      "max_output": 64000,
+      "input_per_mtok": 3.0,
+      "output_per_mtok": 15.0,
+      "supports_effort": true,
+      "supports_thinking": true,
+      "provider": "anthropic"
+    },
+    {
+      "id": "claude-haiku-4-5",
+      "display_name": "Claude Haiku 4.5",
+      "context_window": 200000,
+      "max_output": 64000,
+      "input_per_mtok": 1.0,
+      "output_per_mtok": 5.0,
+      "supports_effort": true,
+      "supports_thinking": true,
+      "provider": "anthropic"
+    },
+    {
       "id": "claude-sonnet-4-6",
       "display_name": "Claude Sonnet 4.6",
       "context_window": 1000000,
@@ -9,7 +31,8 @@
       "output_per_mtok": 15.0,
       "supports_effort": true,
       "supports_thinking": true,
-      "provider": "anthropic"
+      "provider": "anthropic",
+      "deprecated": true
     },
     {
       "id": "claude-opus-4-8",

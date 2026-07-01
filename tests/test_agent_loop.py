@@ -610,9 +610,9 @@ async def test_usage_accrual_and_report(make_session):
     assert report["totals"]["input_tokens"] == 3000
     assert report["totals"]["output_tokens"] == 500
     assert report["session"]["input_tokens"] == 3000
-    # default model is gemini-3.5-flash: 3000/1M*0.3 + 500/1M*2.5 = 0.0009 + 0.00125
-    assert report["cost_usd"] == pytest.approx(0.00215, abs=1e-6)
-    assert "gemini-3.5-flash" in report["by_model"]
+    # default model is claude-sonnet-5: 3000/1M*3.0 + 500/1M*15.0 = 0.009 + 0.0075
+    assert report["cost_usd"] == pytest.approx(0.0165, abs=1e-6)
+    assert "claude-sonnet-5" in report["by_model"]
 
 
 def test_assistant_mode_system_prompt(config, workspace):
