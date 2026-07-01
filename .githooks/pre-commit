@@ -1,0 +1,33 @@
+#!/bin/sh
+# Reject commits that introduce new em dashes (U+2014, "—").
+#
+# Only *added* lines in the staged diff are checked, so pre-existing em
+# dashes elsewhere in the tree won't block a commit. To bypass in a pinch,
+# commit with --no-verify.
+
+# Em dash as a literal so we don't depend on shell $'' support.
+EMDASH=$(printf '\xe2\x80\x94')
+
+# Collect offending added lines: file, then the added content containing an em dash.
+offenders=$(git diff --cached --no-color --unified=0 --diff-filter=ACM |
+	awk -v dash="$EMDASH" '
+		/^\+\+\+ / { next }                       # skip file headers
+		/^diff --git / {                          # remember current file path
+			file = $NF; sub(/^b\//, "", file); next
+		}
+		/^\+/ {                                   # added line
+			if (index($0, dash) > 0) {
+				printf "  %s: %s\n", file, substr($0, 2)
+			}
+		}
+	')
+
+if [ -n "$offenders" ]; then
+	echo "Commit rejected: new em dashes (—) found in staged changes." >&2
+	echo "$offenders" >&2
+	echo >&2
+	echo "Replace them (e.g. with '--' or a comma), or run 'git commit --no-verify' to override." >&2
+	exit 1
+fi
+
+exit 0
