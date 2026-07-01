@@ -15,7 +15,7 @@ from openadventure.store.workspace import slugify
 CanonCategory = Literal["threads", "seeds", "promises", "rulings", "world"]
 NAVIGATION_KEYS = ("module_path", "extra_paths", "obvious_exits", "unresolved_options")
 # Scene-local keys that should not survive a move to a new location.
-SCENE_RESET_KEYS = (*NAVIGATION_KEYS, "npcs_present", "prep_notes")
+SCENE_RESET_KEYS = (*NAVIGATION_KEYS, "npcs_present", "prep_notes", "hidden_notes")
 
 
 class UpdateSceneArgs(BaseModel):
@@ -73,6 +73,19 @@ class UpdateSceneArgs(BaseModel):
             "include everything still relevant. For durable campaign facts use note_canon instead."
         ),
     )
+    hidden_notes: str | None = Field(
+        default=None,
+        description=(
+            "GM-only secrets for THIS location that the players do not know yet: a hidden door "
+            "or trap, an ambush lying in wait, treasure stashed out of sight, an NPC's concealed "
+            "agenda in this scene. Kept in your context every turn so you don't forget to play "
+            "them, but never shown to the table (the /scene command hides them) and never stated "
+            "outright: reveal them through play. Replaces the previous notes, so include "
+            "everything still relevant. Cleared when the party moves on, so use note_canon with "
+            "visibility='hidden' for a secret that outlives this location (a twist, a villain's "
+            "plan); use this for the location-scoped ones."
+        ),
+    )
 
 
 def render_scene(scene: dict, *, full: bool = False) -> str:
@@ -82,9 +95,11 @@ def render_scene(scene: dict, *, full: bool = False) -> str:
     (module/section paths, prep notes, and the staged-NPC ids) and only shows
     what the players can see (where they are, the time, the one-line
     description, visible exits and options, scene flags). Pass ``full=True`` to
-    also include that GM-only state, for assistant mode where there is no screen
-    to keep between the GM and the player. Returns '' when the scene holds
-    nothing to show."""
+    also include that GM-only working state, for assistant mode where there is no
+    screen to keep between the GM and the player. ``hidden_notes`` (location
+    secrets) are never rendered in either mode: this is a display command, so
+    secrets stay out of it and ride only in the GM's own context. Returns ''
+    when the scene holds nothing to show."""
     lines: list[str] = []
     location = scene.get("location")
     time = scene.get("time")
@@ -134,6 +149,7 @@ def _update_scene(ctx: ToolContext, args: UpdateSceneArgs) -> ToolOutcome:
         "unresolved_options",
         "npcs_present",
         "prep_notes",
+        "hidden_notes",
     ):
         value = getattr(args, key)
         if value is not None:

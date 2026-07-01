@@ -346,8 +346,9 @@ def build_context_foot(
     parts: list[str] = []
     if scene:
         # npcs_present renders as briefs in its own section below; extra_paths feeds the
-        # prepped-location text; prep_notes gets its own section. None belong inline here.
-        skip = {"npcs_present", "extra_paths", "prep_notes"}
+        # prepped-location text; prep_notes and hidden_notes each get their own section.
+        # None belong inline here.
+        skip = {"npcs_present", "extra_paths", "prep_notes", "hidden_notes"}
         bits = [f"{k}: {_context_value(v)}" for k, v in scene.items() if v and k not in skip]
         if bits:
             parts.append(
@@ -383,6 +384,15 @@ def build_context_foot(
             "Notes you recorded for the current scene: reconstructed tables, stat blocks whose "
             "cross-references didn't resolve, details the module spreads across sections. GM-only "
             "working memory; they clear when the party moves on.\n" + scene["prep_notes"]
+        )
+    if scene and scene.get("hidden_notes"):
+        parts.append(
+            "## Scene secrets (GM-only, reveal through play)\n"
+            "Secrets you set for this location that the players do not know yet: a hidden door or "
+            "trap, an ambush, concealed treasure, an NPC's hidden agenda in this scene. Act on "
+            "them and pay them off through play, but never state them outright or show them to "
+            "the table. They clear when the party moves on; a secret that outlives this location "
+            "belongs in hidden canon instead.\n" + scene["hidden_notes"]
         )
     if roster:
         parts.append(

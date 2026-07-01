@@ -16,6 +16,7 @@ _SCENE_FIXTURE = {
     "module_path": "death-house/1-entrance.md",
     "extra_paths": ["death-house/2-hall.md"],
     "prep_notes": "The trap resets each round.",
+    "hidden_notes": "A ghoul waits behind the well to ambush.",
     "npcs_present": ["ireena"],
 }
 
@@ -27,7 +28,7 @@ def test_render_scene_is_player_facing_by_default():
     assert "Exits: front doors, street" in rendered
     assert "Nearby: the old well" in rendered
     assert "fog: True" in rendered
-    for hidden in ("death-house", "prep_notes", "resets", "ireena", "module_path"):
+    for hidden in ("death-house", "prep_notes", "resets", "ireena", "module_path", "ghoul"):
         assert hidden not in rendered
 
 
@@ -41,6 +42,13 @@ def test_render_scene_full_includes_gm_state():
     assert "Module path: death-house/1-entrance.md" in rendered
     assert "Extra paths: death-house/2-hall.md" in rendered
     assert "Prep notes: The trap resets each round." in rendered
+
+
+def test_render_scene_never_shows_hidden_notes():
+    # hidden_notes are location secrets: this is a display command, so they stay out
+    # of it in both modes and ride only in the GM's own context.
+    assert "ghoul" not in render_scene(_SCENE_FIXTURE)
+    assert "ghoul" not in render_scene(_SCENE_FIXTURE, full=True)
 
 
 def test_render_scene_empty_when_only_gm_state():
@@ -156,6 +164,33 @@ def test_prep_notes_and_extra_paths_clear_on_move(workspace, campaign):
     registry.dispatch(ctx, "update_scene", {"time": "midnight"})
     snapshot = snapshots.load_json(campaign.scene_path)
     assert snapshot["prep_notes"] == "Trap now disarmed."
+
+
+def test_hidden_notes_clear_on_move(workspace, campaign):
+    registry = build_registry(workspace, campaign, campaign.load_meta())
+    ctx = make_ctx(workspace, campaign)
+
+    registry.dispatch(
+        ctx,
+        "update_scene",
+        {
+            "location": "Crypt",
+            "module_path": "mod/crypt.md",
+            "hidden_notes": "A ghoul waits behind the sarcophagus to ambush.",
+        },
+    )
+    snapshot = snapshots.load_json(campaign.scene_path)
+    assert snapshot["hidden_notes"] == "A ghoul waits behind the sarcophagus to ambush."
+
+    # location secrets shouldn't follow the party to the next location
+    registry.dispatch(ctx, "update_scene", {"location": "Stairs", "module_path": "mod/stairs.md"})
+    assert "hidden_notes" not in snapshots.load_json(campaign.scene_path)
+
+    # but they persist across a same-location update (no move)
+    registry.dispatch(ctx, "update_scene", {"hidden_notes": "The ghoul has now been slain."})
+    registry.dispatch(ctx, "update_scene", {"time": "dawn"})
+    snapshot = snapshots.load_json(campaign.scene_path)
+    assert snapshot["hidden_notes"] == "The ghoul has now been slain."
 
 
 def _make_dooley(workspace, campaign):

@@ -195,6 +195,24 @@ def test_build_context_block_renders_scene_notes():
     assert "## Scene notes" not in build_context_block(_meta(), scene={"location": "X"})
 
 
+def test_build_context_block_renders_scene_secrets():
+    out = build_context_block(
+        _meta(),
+        scene={
+            "location": "Crypt",
+            "hidden_notes": "A ghoul waits behind the sarcophagus to ambush.",
+        },
+    )
+    assert "## Scene secrets" in out
+    assert "ghoul waits behind the sarcophagus" in out
+    # the GM-only, reveal-through-play framing rides with it
+    assert "GM-only" in out and "reveal through play" in out.lower()
+    # the plumbing key never echoes inline in the scene block
+    assert "hidden_notes:" not in out
+    # absent when there are no secrets
+    assert "## Scene secrets" not in build_context_block(_meta(), scene={"location": "X"})
+
+
 async def test_prep_rides_in_session_context(make_session, workspace, campaign, tmp_path):
     _ingest_module(workspace, tmp_path)
     # the party is standing in a keyed location
