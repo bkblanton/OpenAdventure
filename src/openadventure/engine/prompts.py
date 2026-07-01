@@ -41,8 +41,12 @@ _VERBOSITY_INSTRUCTIONS = {
         "context the player already has, and keep it tight enough to follow when read aloud."
     ),
     "high": (
-        "- Response verbosity: high. Balance vivid tabletop narration with forward "
-        "motion. Give enough detail to play from without lingering."
+        "- Response verbosity: high. Two or three paragraphs on average. Ground the "
+        "scene in vivid sensory detail and let NPCs speak in their own voice, drawing "
+        "out the moment enough for the player to feel it, then end with a clear hook. "
+        "Don't pad with recap of context the player already has or repeat beats to fill "
+        "space; every line should add something. Keep game facts, rules, numbers, names, "
+        "and player choices exact."
     ),
 }
 
