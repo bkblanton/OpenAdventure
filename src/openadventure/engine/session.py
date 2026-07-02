@@ -81,20 +81,21 @@ def resolve_settings(
     return base.merged(overrides)
 
 
-def resolve_high_effort_settings(config: AppConfig) -> GenerationSettings:
-    """Settings for *out-of-game* character-template derivation (the CLI
-    ``openadventure template``/``ingest`` paths), where no campaign is loaded so
-    there is no table model to borrow.
+def resolve_utility_settings(config: AppConfig) -> GenerationSettings:
+    """Settings for *out-of-game* jobs (the CLI ``openadventure
+    template``/``ingest`` paths), where no campaign is loaded so there is no table
+    model to borrow. Character-template derivation is the first such job; more
+    accuracy-first, off-the-real-time-path work may join it later.
 
-    Favors accuracy (HIGH_EFFORT_SETTINGS: Gemini 3.5 Flash, thinking on at high
-    effort, the deepest thinking level), overridable per workspace via config.toml
-    [high_effort]; this is the default the out-of-game wizard offers. The model
-    picks its own backend (e.g. a claude-* model runs on Anthropic).
+    Favors accuracy (HIGH_EFFORT_SETTINGS: Claude Sonnet 5, thinking on at high
+    effort), overridable per workspace via config.toml [utility]; this is the
+    default the out-of-game wizard offers. The model picks its own backend (e.g.
+    a gemini-* model runs on Gemini).
 
     In-game, off-table work uses the campaign's table model instead, via
     ``GameSession.high_effort_settings`` (the table model run at high effort).
     """
-    return HIGH_EFFORT_SETTINGS.merged(config.high_effort)
+    return HIGH_EFFORT_SETTINGS.merged(config.utility)
 
 
 @dataclass
@@ -582,8 +583,8 @@ class GameSession:
         they're off the real-time path and latency doesn't matter.
 
         This deliberately reuses the table model rather than the workspace
-        ``[high_effort]`` config. That config now only defaults out-of-game
-        template derivation, where there is no campaign model to borrow."""
+        ``[utility]`` config. That config now only defaults out-of-game jobs,
+        where there is no campaign model to borrow."""
         return HIGH_EFFORT_SETTINGS.merged({"model": self.settings.model})
 
     def provider_for_settings(self, settings: GenerationSettings) -> Provider | None:

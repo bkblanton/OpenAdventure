@@ -61,9 +61,9 @@ class GenerationSettings(BaseModel):
 # without the latency mattering. Run the same Claude Sonnet 5 as the overall
 # default, but turn thinking on at high effort. Staying on the Anthropic backend
 # (the in-game default) means one ANTHROPIC_API_KEY covers the table and these
-# jobs, with no separate key. Generous output room. Override per workspace via
-# config.toml [high_effort] (any GenerationSettings field; pin a gemini-* model
-# to run these on Gemini instead).
+# jobs, with no separate key. Generous output room. For out-of-game jobs, override
+# per workspace via config.toml [utility] (any GenerationSettings field; pin a
+# gemini-* model to run these on Gemini instead).
 HIGH_EFFORT_SETTINGS = GenerationSettings(
     model="claude-sonnet-5",
     max_tokens=32_000,

@@ -65,90 +65,96 @@ def test_high_effort_settings_are_accuracy_first_and_separate_from_the_table():
     assert HIGH_EFFORT_SETTINGS.max_tokens >= 16_000
 
 
-def test_resolve_high_effort_settings_uses_config_override():
+def test_resolve_utility_settings_uses_config_override():
     from openadventure.config import AppConfig
-    from openadventure.engine.session import resolve_high_effort_settings
+    from openadventure.engine.session import resolve_utility_settings
 
     config = AppConfig(
-        workspace_dir="/tmp/ws", high_effort={"model": "claude-sonnet-4-6", "effort": "medium"}
+        workspace_dir="/tmp/ws", utility={"model": "claude-sonnet-4-6", "effort": "medium"}
     )
-    settings = resolve_high_effort_settings(config)
+    settings = resolve_utility_settings(config)
     assert settings.model == "claude-sonnet-4-6"
     assert settings.effort == Effort.medium
     assert settings.thinking is True  # untouched fields keep the default
 
 
-def test_resolve_high_effort_settings_ignores_campaign_model():
+def test_resolve_utility_settings_ignores_campaign_model():
     from openadventure.config import AppConfig
-    from openadventure.engine.session import resolve_high_effort_settings
+    from openadventure.engine.session import resolve_utility_settings
 
     # The campaign's default model must not bleed into off-hot-path work.
     config = AppConfig(workspace_dir="/tmp/ws", model="claude-fable-5")
-    settings = resolve_high_effort_settings(config)
+    settings = resolve_utility_settings(config)
     assert settings == HIGH_EFFORT_SETTINGS
 
 
-def test_load_config_reads_legacy_template_section(tmp_path):
-    # An existing workspace config.toml with [template] keeps working: it feeds
-    # the new high_effort overrides. A [high_effort] section takes precedence.
+def test_load_config_reads_legacy_utility_sections(tmp_path):
+    # Existing workspaces keep working: [utility] is the current name, but the
+    # loader falls back through the old [high_effort] and [template] names, most
+    # specific first.
     from openadventure.config import load_config
 
     (tmp_path / "config.toml").write_text(
         '[template]\nmodel = "claude-opus-4-8"\n', encoding="utf-8"
     )
-    assert load_config(tmp_path).high_effort == {"model": "claude-opus-4-8"}
+    assert load_config(tmp_path).utility == {"model": "claude-opus-4-8"}
 
     (tmp_path / "config.toml").write_text(
-        '[template]\nmodel = "legacy"\n[high_effort]\nmodel = "new"\n', encoding="utf-8"
+        '[template]\nmodel = "legacy"\n[high_effort]\nmodel = "mid"\n', encoding="utf-8"
     )
-    assert load_config(tmp_path).high_effort == {"model": "new"}
+    assert load_config(tmp_path).utility == {"model": "mid"}
+
+    (tmp_path / "config.toml").write_text(
+        '[template]\nmodel = "legacy"\n[high_effort]\nmodel = "mid"\n[utility]\nmodel = "new"\n',
+        encoding="utf-8",
+    )
+    assert load_config(tmp_path).utility == {"model": "new"}
 
 
-def test_set_high_effort_model_creates_file_from_default_when_missing(tmp_path):
+def test_set_utility_model_creates_file_from_default_when_missing(tmp_path):
     # No config.toml yet: the writer seeds one and records the choice, so a fresh
-    # workspace gets a reliable way to set the high-effort model.
-    from openadventure.config import load_config, set_high_effort_model
+    # workspace gets a reliable way to set the out-of-game utility model.
+    from openadventure.config import load_config, set_utility_model
 
     config = load_config(tmp_path)
-    assert config.high_effort == {}
+    assert config.utility == {}
 
-    assert set_high_effort_model(config, "claude-opus-4-8") is True
-    assert config.high_effort["model"] == "claude-opus-4-8"  # live config updated
-    assert load_config(tmp_path).high_effort["model"] == "claude-opus-4-8"  # and persisted
+    assert set_utility_model(config, "claude-opus-4-8") is True
+    assert config.utility["model"] == "claude-opus-4-8"  # live config updated
+    assert load_config(tmp_path).utility["model"] == "claude-opus-4-8"  # and persisted
     # idempotent: re-setting the same model is a no-op
-    assert set_high_effort_model(config, "claude-opus-4-8") is False
+    assert set_utility_model(config, "claude-opus-4-8") is False
 
 
-def test_set_high_effort_model_patches_existing_table_in_place(tmp_path):
-    from openadventure.config import load_config, set_high_effort_model
+def test_set_utility_model_patches_existing_table_in_place(tmp_path):
+    from openadventure.config import load_config, set_utility_model
 
     (tmp_path / "config.toml").write_text(
-        '[provider]\nmodel = "claude-fable-5"\n\n'
-        '[high_effort]\nmodel = "old-model"\neffort = "high"\n',
+        '[provider]\nmodel = "claude-fable-5"\n\n[utility]\nmodel = "old-model"\neffort = "high"\n',
         encoding="utf-8",
     )
     config = load_config(tmp_path)
-    assert set_high_effort_model(config, "gemini-3.5-flash") is True
+    assert set_utility_model(config, "gemini-3.5-flash") is True
 
     reloaded = load_config(tmp_path)
-    # only the high-effort model changed; its other keys and other tables survive
-    assert reloaded.high_effort == {"model": "gemini-3.5-flash", "effort": "high"}
+    # only the utility model changed; its other keys and other tables survive
+    assert reloaded.utility == {"model": "gemini-3.5-flash", "effort": "high"}
     assert reloaded.model == "claude-fable-5"
 
 
-def test_set_high_effort_model_ignores_commented_default_example(tmp_path):
-    # The shipped config.toml ships a *commented* [high_effort] example; setting
-    # the model must add a real table, not edit the documentation.
-    from openadventure.config import DEFAULT_CONFIG_TOML, load_config, set_high_effort_model
+def test_set_utility_model_ignores_commented_default_example(tmp_path):
+    # The shipped config.toml ships a *commented* [utility] example; setting the
+    # model must add a real table, not edit the documentation.
+    from openadventure.config import DEFAULT_CONFIG_TOML, load_config, set_utility_model
 
     (tmp_path / "config.toml").write_text(DEFAULT_CONFIG_TOML, encoding="utf-8")
     config = load_config(tmp_path)
-    assert config.high_effort == {}  # the commented example is not parsed
+    assert config.utility == {}  # the commented example is not parsed
 
-    assert set_high_effort_model(config, "claude-sonnet-4-6") is True
-    assert load_config(tmp_path).high_effort["model"] == "claude-sonnet-4-6"
+    assert set_utility_model(config, "claude-sonnet-4-6") is True
+    assert load_config(tmp_path).utility["model"] == "claude-sonnet-4-6"
     # the documentation block is preserved
-    assert "out-of-game character-template derivation" in (tmp_path / "config.toml").read_text(
+    assert "default model for out-of-game jobs" in (tmp_path / "config.toml").read_text(
         encoding="utf-8"
     )
 

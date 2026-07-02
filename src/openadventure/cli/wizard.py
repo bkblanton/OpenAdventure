@@ -889,14 +889,14 @@ def run_template_wizard(
       run at high effort. No prompt, and nothing is persisted to the workspace.
     * Out-of-game (``table_model`` None): no campaign is loaded, so the wizard
       asks for the model each run, defaulting to the saved workspace
-      ``[high_effort]`` model, and persists the pick as that default.
+      ``[utility]`` model, and persists the pick as that default.
 
     If ``source_dir`` is given and a template already exists there, the wizard
     warns interactively and asks for confirmation before proceeding.
     """
     from openadventure.cli.firstrun import ensure_api_key
-    from openadventure.config import set_high_effort_model
-    from openadventure.engine.session import resolve_high_effort_settings
+    from openadventure.config import set_utility_model
+    from openadventure.engine.session import resolve_utility_settings
     from openadventure.providers.base import HIGH_EFFORT_SETTINGS, ModelRegistry
     from openadventure.providers.factory import build_provider
 
@@ -933,8 +933,8 @@ def run_template_wizard(
         )
     else:
         # Out-of-game: no campaign model to borrow, so ask, defaulting to the saved
-        # workspace [high_effort] model.
-        settings = resolve_high_effort_settings(config)
+        # workspace [utility] model.
+        settings = resolve_utility_settings(config)
         default_model = settings.model
         console.print(
             f"\n[bold]Character template for [cyan]{source}[/cyan][/bold]\n"
@@ -975,10 +975,9 @@ def run_template_wizard(
 
     # Out-of-game only: persist the pick as the workspace default for the next
     # out-of-game derivation. In-game we never write the workspace from here.
-    if table_model is None and sys.stdin.isatty() and set_high_effort_model(config, chosen):
+    if table_model is None and sys.stdin.isatty() and set_utility_model(config, chosen):
         console.print(
-            f"[dim]Saved [cyan]{chosen}[/cyan] as the default template model "
-            "for out-of-game derivation.[/dim]"
+            f"[dim]Saved [cyan]{chosen}[/cyan] as the default model for out-of-game jobs.[/dim]"
         )
 
     api_key = ensure_api_key(console, config, provider_name)

@@ -22,11 +22,12 @@ class AppConfig(BaseModel):
     model: str | None = None  # default model id; selects the backend too. None -> built-in default
     api_key: str | None = None  # from config.toml [auth]; env var preferred
     media: dict[str, Any] = Field(default_factory=dict)
-    # [high_effort] overrides for out-of-game character-template derivation (the
-    # CLI `openadventure template`/`ingest` paths, where no campaign model exists
-    # to borrow). In-game, off-table work uses the campaign's table model instead.
-    # Reads a legacy [template] section too.
-    high_effort: dict[str, Any] = Field(default_factory=dict)
+    # [utility] overrides the default model for out-of-game jobs (the CLI
+    # `openadventure template`/`ingest` paths, where no campaign model exists to
+    # borrow): character-template derivation today, more accuracy-first, off-the-
+    # real-time-path work later. In-game, off-table work uses the campaign's table
+    # model instead. Reads the legacy [high_effort]/[template] sections too.
+    utility: dict[str, Any] = Field(default_factory=dict)
     embeddings: dict[str, Any] = Field(default_factory=dict)  # [embeddings] hybrid-search backend
     raw: dict[str, Any] = Field(default_factory=dict)  # full parsed config.toml
 
@@ -47,7 +48,7 @@ def load_config(workspace: str | Path | None = None) -> AppConfig:
         model=raw.get("provider", {}).get("model"),
         api_key=raw.get("auth", {}).get("api_key"),
         media=raw.get("media", {}),
-        high_effort=raw.get("high_effort", raw.get("template", {})),
+        utility=raw.get("utility", raw.get("high_effort", raw.get("template", {}))),
         embeddings=raw.get("embeddings", {}),
         raw=raw,
     )
@@ -83,12 +84,14 @@ DEFAULT_CONFIG_TOML = """\
 # api_key = "sk-ant-..."        # prefer ANTHROPIC_API_KEY (or, for a gemini model,
 #                               # GEMINI_API_KEY / GOOGLE_API_KEY) in env or .env
 
-# [high_effort]                   # out-of-game character-template derivation only
-#                                 # (the CLI `openadventure template`/`ingest` paths,
-#                                 # where no campaign is loaded). The wizard offers
-#                                 # this as the default and asks each run. In-game,
-#                                 # off-table work (templates + the canon chronicler)
-#                                 # uses the campaign's table model at high effort.
+# [utility]                       # default model for out-of-game jobs only (the CLI
+#                                 # `openadventure template`/`ingest` paths, where no
+#                                 # campaign is loaded): character-template derivation
+#                                 # today, more accuracy-first off-the-real-time-path
+#                                 # work later. The wizard offers this as the default
+#                                 # and asks each run. In-game, off-table work
+#                                 # (templates + the canon chronicler) uses the
+#                                 # campaign's table model at high effort instead.
 # model = "claude-sonnet-5"       # defaults: Claude Sonnet 5, thinking on at high
 #                                 # effort. Off the real-time path. Same Anthropic
 #                                 # key as the in-game default; pin a gemini-* model
@@ -179,10 +182,9 @@ def _set_toml_string(text: str, table: str, key: str, value: str) -> str:
     return "\n".join(lines) + trailing
 
 
-def set_high_effort_model(config: AppConfig, model_id: str) -> bool:
-    """Persist the default model for out-of-game character-template derivation to
-    the workspace ``config.toml`` ``[high_effort]`` table and update ``config`` in
-    memory.
+def set_utility_model(config: AppConfig, model_id: str) -> bool:
+    """Persist the default model for out-of-game jobs to the workspace
+    ``config.toml`` ``[utility]`` table and update ``config`` in memory.
 
     This is the default the out-of-game wizard offers (and saves the pick back to)
     when no campaign is loaded; only the model is set here, so the other fields
@@ -190,13 +192,13 @@ def set_high_effort_model(config: AppConfig, model_id: str) -> bool:
     when ``model_id`` was already configured (a no-op). Creates ``config.toml``
     from the documented default when missing.
     """
-    if config.high_effort.get("model") == model_id:
+    if config.utility.get("model") == model_id:
         return False
     path = config.workspace_dir / "config.toml"
     text = path.read_text(encoding="utf-8") if path.is_file() else DEFAULT_CONFIG_TOML
-    path.write_text(_set_toml_string(text, "high_effort", "model", model_id), encoding="utf-8")
+    path.write_text(_set_toml_string(text, "utility", "model", model_id), encoding="utf-8")
     # Reflect the change in the live config so the running session picks it up
-    # (resolve_high_effort_settings reads config.high_effort, not the file).
-    config.high_effort = {**config.high_effort, "model": model_id}
-    config.raw.setdefault("high_effort", {})["model"] = model_id
+    # (resolve_utility_settings reads config.utility, not the file).
+    config.utility = {**config.utility, "model": model_id}
+    config.raw.setdefault("utility", {})["model"] = model_id
     return True

@@ -833,7 +833,7 @@ def test_template_wizard_in_game_reuses_table_model_without_prompt(config, monke
     assert settings.model == "claude-opus-4-8"  # the campaign's table model
     assert settings.thinking is True and settings.effort.value == "high"  # at high effort
     assert asked["provider"] == "anthropic"  # key for the table model's backend
-    assert config.high_effort.get("model") is None  # workspace config left untouched
+    assert config.utility.get("model") is None  # workspace config left untouched
 
 
 def test_template_wizard_lets_you_pick_a_model(config, monkeypatch):

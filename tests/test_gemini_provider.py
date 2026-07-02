@@ -63,17 +63,17 @@ def test_model_selects_backend_via_settings():
     assert over.model == "claude-opus-4-8"
 
 
-def test_high_effort_model_picks_its_own_backend():
-    from openadventure.engine.session import resolve_high_effort_settings
+def test_utility_model_picks_its_own_backend():
+    from openadventure.engine.session import resolve_utility_settings
 
     registry = ModelRegistry.load_default()
-    # default high-effort model is Claude Sonnet 5 -> anthropic, independent of the campaign model
-    default = resolve_high_effort_settings(AppConfig(workspace_dir=".", model="gemini-3.5-flash"))
+    # default utility model is Claude Sonnet 5 -> anthropic, independent of the campaign model
+    default = resolve_utility_settings(AppConfig(workspace_dir=".", model="gemini-3.5-flash"))
     assert default.model == "claude-sonnet-5"
     assert registry.provider_for(default.model) == "anthropic"
-    # pin a gemini high-effort model -> runs on the gemini backend
-    pinned = resolve_high_effort_settings(
-        AppConfig(workspace_dir=".", high_effort={"model": "gemini-3.5-flash"})
+    # pin a gemini utility model -> runs on the gemini backend
+    pinned = resolve_utility_settings(
+        AppConfig(workspace_dir=".", utility={"model": "gemini-3.5-flash"})
     )
     assert registry.provider_for(pinned.model) == "gemini"
 
