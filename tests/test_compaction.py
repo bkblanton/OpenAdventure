@@ -158,6 +158,12 @@ async def test_compaction_pass_rolls_recap_and_canon(make_session):
     flat = "\n".join(b.text for m in messages for b in m.content if b.type == "text")
     assert "turn 0:" not in flat  # compacted away
 
+    # cache breakpoints sit on the stable boundaries: the head (first message) and the
+    # last history message, so the head+history prefix caches across turns. The head is
+    # flagged; some later message before the foot carries the history breakpoint.
+    assert messages[0].cache
+    assert any(m.cache for m in messages[1:])
+
     # second pass folds the old recap into the new one
     fill_log(session, turns=20)
     session.provider = FakeProvider(script=[canon_turn("Updated recap.")])
@@ -412,6 +418,27 @@ def test_anthropic_cache_breakpoints():
     )
     assert messages[-1]["content"][-1]["cache_control"] == {"type": "ephemeral"}
     assert "cache_control" not in messages[0]["content"][0]
+
+
+def test_anthropic_caches_stable_message_boundaries():
+    # A message flagged cache=True (the context head and the last history message)
+    # gets its own breakpoint, so the head+history prefix is read back next turn even
+    # though the volatile foot and live message that follow it are not.
+    from openadventure.providers.anthropic_provider import _convert_messages
+
+    messages = _convert_messages(
+        [
+            Message(role="user", content=[TextBlock(text="head")], cache=True),
+            Message(role="assistant", content=[TextBlock(text="history")], cache=True),
+            Message(role="user", content=[TextBlock(text="foot")]),
+            Message(role="user", content=[TextBlock(text="live input")]),
+        ],
+        cache_last=True,
+    )
+    assert messages[0]["content"][-1]["cache_control"] == {"type": "ephemeral"}  # head
+    assert messages[1]["content"][-1]["cache_control"] == {"type": "ephemeral"}  # last history
+    assert "cache_control" not in messages[2]["content"][-1]  # volatile foot
+    assert messages[3]["content"][-1]["cache_control"] == {"type": "ephemeral"}  # cache_last
 
 
 @pytest.mark.parametrize("budget,expect", [(20_000, True), (800_000, False)])

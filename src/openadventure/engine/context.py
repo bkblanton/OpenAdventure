@@ -143,9 +143,10 @@ def estimate_prompt_cost(
     player actually pays. ``non_tail_tokens`` is the measured size of the prompt minus
     the log tail (system + context block + tool schemas), from
     GameSession.non_tail_tokens; at steady state the tail fills to roughly the
-    compaction trigger fraction of the room left after it. The engine re-sends the
-    campaign context each turn (not yet prefix-cached), so this is close to the real
-    per-prompt cost, not a floor."""
+    compaction trigger fraction of the room left after it. Priced at the full input
+    rate for every token: prefix caching (system prompt + head + history) makes the
+    real per-prompt cost lower between compactions, so this is a conservative ceiling,
+    not a floor."""
     budget = ContextBudget.from_settings(settings, model)
     peak_input = (
         int(COMPACTION_TRIGGER_FRACTION * budget.tail_for(non_tail_tokens)) + non_tail_tokens

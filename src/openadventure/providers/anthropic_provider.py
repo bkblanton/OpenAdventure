@@ -41,6 +41,7 @@ def _convert_messages(messages: list[Message], *, cache_last: bool = False) -> l
     out: list[dict[str, Any]] = []
     for message in messages:
         content: list[dict[str, Any]] = []
+        cache_here = message.cache
         for block in message.content:
             match block.type:
                 case "text":
@@ -76,8 +77,15 @@ def _convert_messages(messages: list[Message], *, cache_last: bool = False) -> l
                         }
                     )
         out.append({"role": message.role, "content": content})
+        # Byte-stable boundaries (context head, last history message) get a breakpoint
+        # so the whole head+history prefix is read back cheaply on the next turn; the
+        # volatile foot and live message that follow are re-sent either way.
+        if cache_here and content:
+            content[-1]["cache_control"] = {"type": "ephemeral"}
     if cache_last:
-        # cache the whole conversation prefix; the next turn reads it back cheaply
+        # Also cache the very end of the conversation. Turn-to-turn this trails the
+        # volatile foot so it isn't re-read, but within one turn's multi-round tool
+        # loop the prefix only grows, so each round reads the previous round's cache.
         for message in reversed(out):
             if message["content"]:
                 message["content"][-1]["cache_control"] = {"type": "ephemeral"}

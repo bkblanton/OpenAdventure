@@ -181,6 +181,12 @@ ContentBlock = TextBlock | ThinkingBlock | RedactedThinkingBlock | ToolUseBlock 
 class Message(BaseModel):
     role: Literal["user", "assistant"]
     content: list[ContentBlock]
+    # Ask the adapter to place a cache breakpoint at the end of this message. Set on
+    # the byte-stable boundaries of the assembled prompt (the context head, and the
+    # last replayed-history message before the volatile foot) so a provider that
+    # supports explicit prefix caching reads that whole span back cheaply next turn.
+    # Providers without explicit breakpoints (e.g. Gemini's implicit cache) ignore it.
+    cache: bool = False
 
 
 class SystemBlock(BaseModel):

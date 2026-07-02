@@ -995,7 +995,15 @@ class GameSession:
         if entries and entries[-1].type == "user_message":
             entries = entries[:-1]
         history, tail_tokens = render_history(entries, tail_budget=tail_budget, after_seq=after_seq)
-        messages = [Message(role="user", content=[TextBlock(text=head_text)]), *history]
+        # Cache breakpoints on the two byte-stable boundaries: the end of the head, and
+        # the end of the replayed history (before the volatile foot). Between compactions
+        # the head+history span is an exact prefix of the next turn, so a provider with
+        # explicit prefix caching reads it back instead of re-processing the transcript.
+        # The head breakpoint still holds when the oldest history is later evicted.
+        head_msg = Message(role="user", content=[TextBlock(text=head_text)], cache=True)
+        if history:
+            history[-1].cache = True
+        messages = [head_msg, *history]
         if foot_text:
             messages.append(Message(role="user", content=[TextBlock(text=foot_text)]))
         return messages, context_tokens + tail_tokens
