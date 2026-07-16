@@ -21,6 +21,11 @@ PROVIDER_INFO: dict[str, dict[str, object]] = {
         "env": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
         "console": "https://aistudio.google.com/apikey",
     },
+    "openai": {
+        "label": "OpenAI",
+        "env": ("OPENAI_API_KEY",),
+        "console": "https://platform.openai.com/api-keys",
+    },
 }
 
 PROVIDER_NAMES = tuple(PROVIDER_INFO)
@@ -42,4 +47,8 @@ def build_provider(name: str, api_key: str, registry: ModelRegistry | None = Non
         from openadventure.providers.anthropic_provider import AnthropicProvider
 
         return AnthropicProvider(api_key, registry)
+    if name == "openai":
+        from openadventure.providers.openai_provider import OpenAIProvider
+
+        return OpenAIProvider(api_key, registry)
     raise ValueError(f"Unknown provider {name!r}; known backends: {', '.join(PROVIDER_NAMES)}.")

@@ -101,7 +101,12 @@ class ModelInfo(BaseModel):
 def infer_provider(model_id: str) -> str:
     """Best-effort backend for a model id not in the registry, so a brand-new
     model works without a code change. Keyed off the vendor's id convention."""
-    return "gemini" if model_id.lower().startswith("gemini") else "anthropic"
+    lowered = model_id.lower()
+    if lowered.startswith("gemini"):
+        return "gemini"
+    if lowered.startswith(("gpt", "o1", "o3", "o4")):
+        return "openai"
+    return "anthropic"
 
 
 class ModelRegistry(BaseModel):

@@ -32,6 +32,7 @@ from openadventure.providers.base import (
     Effort,
     GenerationSettings,
     Message,
+    ModelInfo,
     ModelRegistry,
     Provider,
     SystemBlock,
@@ -96,6 +97,22 @@ def resolve_utility_settings(config: AppConfig) -> GenerationSettings:
     ``GameSession.high_effort_settings`` (the table model run at high effort).
     """
     return HIGH_EFFORT_SETTINGS.merged(config.utility)
+
+
+def estimate_cost(usage: Usage, model: ModelInfo) -> float:
+    """Rough USD cost for ``usage`` at ``model``'s per-MTok rates.
+
+    Cache reads bill at a tenth of the input rate and cache writes at 1.25x, the
+    Anthropic pricing convention; Gemini and OpenAI report no cache-write tokens
+    (their prefix caches are implicit), so that term is zero for them. Output
+    already includes reasoning/thinking tokens across all three backends. A model
+    with unknown pricing (rates 0.0) yields 0.0."""
+    return (
+        usage.input_tokens * model.input_per_mtok
+        + usage.cache_creation_input_tokens * model.input_per_mtok * 1.25
+        + usage.cache_read_input_tokens * model.input_per_mtok * 0.10
+        + usage.output_tokens * model.output_per_mtok
+    ) / 1_000_000
 
 
 @dataclass
@@ -179,6 +196,7 @@ class GameSession:
         seed = session_seed if session_seed is not None else random.SystemRandom().randrange(2**32)
         self.rng = random.Random(seed)
         self.session_usage = Usage()
+        self.session_cost_usd = 0.0
         self.tool_ctx = ToolContext(
             workspace=workspace,
             campaign=campaign,
@@ -1392,12 +1410,8 @@ class GameSession:
     def accrue_usage(self, usage: Usage) -> None:
         self.session_usage = self.session_usage.add(usage)
         model = self.models.get(self.settings.model)
-        cost = (
-            usage.input_tokens * model.input_per_mtok
-            + usage.cache_creation_input_tokens * model.input_per_mtok * 1.25
-            + usage.cache_read_input_tokens * model.input_per_mtok * 0.10
-            + usage.output_tokens * model.output_per_mtok
-        ) / 1_000_000
+        cost = estimate_cost(usage, model)
+        self.session_cost_usd = round(self.session_cost_usd + cost, 6)
 
         data = snapshots.load_json(self.campaign.usage_path) or {
             "totals": Usage().model_dump(),
@@ -1422,4 +1436,5 @@ class GameSession:
             "by_model": {},
         }
         data["session"] = self.session_usage.model_dump()
+        data["session_cost_usd"] = self.session_cost_usd
         return data

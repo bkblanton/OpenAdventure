@@ -59,7 +59,7 @@ def resolve_api_key(config: AppConfig, provider: str) -> str | None:
     ``[auth].api_key``.
 
     Anthropic reads ANTHROPIC_API_KEY; Gemini reads GEMINI_API_KEY then
-    GOOGLE_API_KEY (matching the image backend)."""
+    GOOGLE_API_KEY (matching the image backend); OpenAI reads OPENAI_API_KEY."""
     from openadventure.providers.factory import api_key_env_vars
 
     for var in api_key_env_vars(provider):
@@ -78,11 +78,13 @@ DEFAULT_CONFIG_TOML = """\
 # models thinking maps to adaptive thinking). Set this to pin a different default
 # model; tune effort/thinking/context per campaign at play time with /effort,
 # /thinking, /context.
-# model = "gemini-3.5-flash"    # claude-* -> Anthropic, gemini-* -> Gemini
+# model = "gemini-3.5-flash"    # claude-* -> Anthropic, gemini-* -> Gemini,
+#                               # gpt-* -> OpenAI
 
 # [auth]
 # api_key = "sk-ant-..."        # prefer ANTHROPIC_API_KEY (or, for a gemini model,
-#                               # GEMINI_API_KEY / GOOGLE_API_KEY) in env or .env
+#                               # GEMINI_API_KEY / GOOGLE_API_KEY; for a gpt model,
+#                               # OPENAI_API_KEY) in env or .env
 
 # [utility]                       # default model for out-of-game jobs only (the CLI
 #                                 # `openadventure template`/`ingest` paths, where no

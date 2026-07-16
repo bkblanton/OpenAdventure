@@ -611,9 +611,29 @@ class Repl:
             f"{session['output_tokens']:,}",
             f"{session['cache_read_input_tokens']:,}",
             f"{session['cache_creation_input_tokens']:,}",
-            "",
+            f"${report.get('session_cost_usd', 0.0):.4f}",
         )
         self.console.print(table)
+        by_model = report.get("by_model", {})
+        if by_model:
+            # Per-model breakdown: with the backend chosen by the model, a campaign
+            # can span several (e.g. a cheap model for setup, a premium one at the
+            # table), so show where the tokens and cost actually went.
+            per = Table("model", "input", "output", "est. cost", title="by model")
+            for model_id, row in sorted(
+                by_model.items(), key=lambda kv: kv[1].get("cost_usd", 0.0), reverse=True
+            ):
+                per.add_row(
+                    model_id,
+                    f"{row.get('input_tokens', 0):,}",
+                    f"{row.get('output_tokens', 0):,}",
+                    f"${row.get('cost_usd', 0.0):.4f}",
+                )
+            self.console.print(per)
+        self.console.print(
+            "[dim]Cost is a rough estimate from per-model list prices; cache reads bill "
+            "at ~10% of input. Actual billing may differ.[/dim]"
+        )
         s = self.session.settings
         self.console.print(
             f"[dim]model={s.model} effort={s.effort} verbosity={s.verbosity} "

@@ -613,6 +613,8 @@ async def test_usage_accrual_and_report(make_session):
     # default model is claude-sonnet-5: 3000/1M*3.0 + 500/1M*15.0 = 0.009 + 0.0075
     assert report["cost_usd"] == pytest.approx(0.0165, abs=1e-6)
     assert "claude-sonnet-5" in report["by_model"]
+    # one session, one model -> the session cost matches the campaign cost
+    assert report["session_cost_usd"] == pytest.approx(0.0165, abs=1e-6)
 
 
 def test_assistant_mode_system_prompt(config, workspace):
