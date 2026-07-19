@@ -308,7 +308,7 @@ async def test_template_job_progress_success_and_overwrite(web_client, monkeypat
     async def derive_template(_provider, settings, directory, source_name, on_progress=None):
         assert directory == source_dir
         assert source_name == "template-rules"
-        assert settings.model == "claude-sonnet-5"
+        assert settings.model == "gpt-5.6-luna"
         on_progress("Round 3/16: reading character creation")
         template = {
             "name": "template-rules/character",
@@ -331,7 +331,7 @@ async def test_template_job_progress_success_and_overwrite(web_client, monkeypat
     assert completed["result"] == {
         "fields": 2,
         "resources": 1,
-        "model": "claude-sonnet-5",
+        "model": "gpt-5.6-luna",
     }
     assert any(
         event["round"] == 3

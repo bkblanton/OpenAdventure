@@ -88,7 +88,7 @@ def resolve_utility_settings(config: AppConfig) -> GenerationSettings:
     model to borrow. Character-template derivation is the first such job; more
     accuracy-first, off-the-real-time-path work may join it later.
 
-    Favors accuracy (HIGH_EFFORT_SETTINGS: Claude Sonnet 5, thinking on at high
+    Favors accuracy (HIGH_EFFORT_SETTINGS: GPT-5.6 Luna, thinking on at high
     effort), overridable per workspace via config.toml [utility]; this is the
     default the out-of-game wizard offers. The model picks its own backend (e.g.
     a gemini-* model runs on Gemini).

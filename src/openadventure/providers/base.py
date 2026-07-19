@@ -33,12 +33,11 @@ class Verbosity(StrEnum):
 
 # Per-turn generation knobs, set individually (no bundled "quality" presets):
 # model picks the backend, effort/thinking trade latency for depth, and
-# context_budget caps the assembled prompt. The default model is Claude Sonnet 5
-# (the overall default); effort/thinking default to high/on for depth (for
-# Anthropic models thinking maps to adaptive thinking), and any field is
+# context_budget caps the assembled prompt. The default model is GPT-5.6 Luna;
+# effort/thinking default to high/on for depth, and any field is
 # overridable per campaign (/model, /effort, /thinking, /verbosity, /context).
 class GenerationSettings(BaseModel):
-    model: str = "claude-sonnet-5"
+    model: str = "gpt-5.6-luna"
     # Output cap for a turn. With adaptive thinking the reasoning tokens and the
     # visible response share this budget, so it must be generous enough that a
     # high-effort, high-verbosity turn (e.g. rolling up a full party) can finish
@@ -58,14 +57,14 @@ class GenerationSettings(BaseModel):
 # One shared bundle for work that runs AWAY from the real-time table: one-time
 # character-template derivation, and the background "chronicler" that maintains
 # campaign canon. Both are off the hot path, so they can afford deeper reasoning
-# without the latency mattering. Run the same Claude Sonnet 5 as the overall
-# default, but turn thinking on at high effort. Staying on the Anthropic backend
-# (the in-game default) means one ANTHROPIC_API_KEY covers the table and these
-# jobs, with no separate key. Generous output room. For out-of-game jobs, override
-# per workspace via config.toml [utility] (any GenerationSettings field; pin a
+# without the latency mattering. Run the same GPT-5.6 Luna as the overall
+# default, but turn thinking on at high effort. Staying on the OpenAI backend
+# (the in-game default) means one OPENAI_API_KEY covers the table and these jobs,
+# with no separate key. Generous output room. For out-of-game jobs, override per
+# workspace via config.toml [utility] (any GenerationSettings field; pin a
 # gemini-* model to run these on Gemini instead).
 HIGH_EFFORT_SETTINGS = GenerationSettings(
-    model="claude-sonnet-5",
+    model="gpt-5.6-luna",
     max_tokens=32_000,
     effort=Effort.high,
     thinking=True,

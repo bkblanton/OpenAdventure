@@ -101,8 +101,8 @@ DEFAULT_CONFIG_TOML = """\
 
 [provider]
 # The model selects the backend automatically (see /model). Games default to
-# claude-sonnet-5 (Anthropic backend, high effort, thinking on — for Claude
-# models thinking maps to adaptive thinking). Set this to pin a different default
+# gpt-5.6-luna (OpenAI backend, high effort, thinking on). Set this to pin a
+# different default
 # model; tune effort/thinking/context per campaign at play time with /effort,
 # /thinking, /context.
 # model = "gemini-3.5-flash"    # claude-* -> Anthropic, gemini-* -> Gemini,
@@ -121,10 +121,10 @@ DEFAULT_CONFIG_TOML = """\
 #                                 # and asks each run. In-game, off-table work
 #                                 # (templates + the canon chronicler) uses the
 #                                 # campaign's table model at high effort instead.
-# model = "claude-sonnet-5"       # defaults: Claude Sonnet 5, thinking on at high
-#                                 # effort. Off the real-time path. Same Anthropic
-#                                 # key as the in-game default; pin a gemini-* model
-#                                 # to run on Gemini.
+# model = "gpt-5.6-luna"          # defaults: GPT-5.6 Luna, thinking on at high
+#                                 # effort. Off the real-time path. Same OpenAI key
+#                                 # as the in-game default; pin a gemini-* model to
+#                                 # run on Gemini.
 # effort = "high"                 # low | medium | high | max
 # thinking = true                 # deeper reasoning, fine here since it isn't real-time
 # max_tokens = 32000

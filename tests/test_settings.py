@@ -42,10 +42,9 @@ def test_registry_unknown_model_gets_safe_defaults():
 
 
 def test_default_settings_are_accuracy_first():
-    # The default table: Claude Sonnet 5, high effort, thinking on (no presets).
-    # For Anthropic models thinking maps to adaptive thinking.
+    # The default table: GPT-5.6 Luna, high effort, thinking on (no presets).
     s = GenerationSettings()
-    assert s.model == "claude-sonnet-5"
+    assert s.model == "gpt-5.6-luna"
     assert s.effort == Effort.high
     assert s.thinking is True
     assert s.verbosity == Verbosity.medium
@@ -54,12 +53,12 @@ def test_default_settings_are_accuracy_first():
 def test_high_effort_settings_are_accuracy_first_and_separate_from_the_table():
     # Off-hot-path work (template derivation, the canon chronicler) is not
     # real-time, so unlike the default table it turns thinking ON at high effort,
-    # even though it runs the same Claude Sonnet 5 the table does. It stays on the
-    # Anthropic backend (the in-game default) so one Anthropic key serves the
+    # even though it runs the same GPT-5.6 Luna the table does. It stays on the
+    # OpenAI backend (the in-game default) so one OpenAI key serves the
     # table and these jobs.
     assert HIGH_EFFORT_SETTINGS.thinking is True
-    assert HIGH_EFFORT_SETTINGS.model == "claude-sonnet-5"
-    assert ModelRegistry.load_default().provider_for(HIGH_EFFORT_SETTINGS.model) == "anthropic"
+    assert HIGH_EFFORT_SETTINGS.model == "gpt-5.6-luna"
+    assert ModelRegistry.load_default().provider_for(HIGH_EFFORT_SETTINGS.model) == "openai"
     assert HIGH_EFFORT_SETTINGS.effort == Effort.high
     # generous output room for a full template plus its thinking
     assert HIGH_EFFORT_SETTINGS.max_tokens >= 16_000
@@ -160,7 +159,7 @@ def test_set_utility_model_ignores_commented_default_example(tmp_path):
 
 
 def test_provider_for_settings_reuses_chat_provider_on_matching_backend(make_session):
-    # The chronicler's settings run on the same Anthropic backend as the table
+    # The chronicler's settings run on the same OpenAI backend as the table
     # default, so it reuses the live provider rather than building a second one.
     session = make_session(script=[])
     assert session.provider_for_settings(HIGH_EFFORT_SETTINGS) is session.provider
