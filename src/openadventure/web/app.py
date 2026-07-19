@@ -57,6 +57,22 @@ LOCAL_HOST = "127.0.0.1"
 MAX_UPLOAD_BYTES = 512 * 1024 * 1024
 IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
 AUDIO_SUFFIXES = {".aac", ".flac", ".m4a", ".mp3", ".ogg", ".wav", ".webm"}
+
+
+class LocalStaticFiles(StaticFiles):
+    """Serve browser assets without cache reuse during local development.
+
+    The web UI ships as separately requested HTML, CSS, and JavaScript files.
+    A normal page reload must not combine newly merged markup with stale cached
+    scripts or styles, which can leave controls inert or show an obsolete layout.
+    """
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+
 CREDENTIAL_SERVICES = {
     "anthropic": "ANTHROPIC_API_KEY",
     "gemini": "GEMINI_API_KEY",
@@ -1038,7 +1054,7 @@ def create_app(config: AppConfig | None = None) -> Starlette:
             "/api/campaigns/{slug:str}/media/{kind:str}/{media_path:path}",
             campaign_media,
         ),
-        Mount("/static", app=StaticFiles(directory=STATIC_DIR), name="static"),
+        Mount("/static", app=LocalStaticFiles(directory=STATIC_DIR), name="static"),
     ]
     middleware = [
         Middleware(

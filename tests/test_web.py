@@ -136,11 +136,13 @@ async def test_homepage_and_static_assets_are_served(web_client):
     stylesheet = await client.get("/static/styles.css")
     assert stylesheet.status_code == 200
     assert stylesheet.headers["content-type"].startswith("text/css")
+    assert stylesheet.headers["cache-control"] == "no-store"
     assert stylesheet.text.strip()
 
     script = await client.get("/static/app.js")
     assert script.status_code == 200
     assert "javascript" in script.headers["content-type"]
+    assert script.headers["cache-control"] == "no-store"
     assert script.text.strip()
 
 
