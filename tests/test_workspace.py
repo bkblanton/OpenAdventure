@@ -3,7 +3,7 @@
 import pytest
 
 from openadventure.store import snapshots
-from openadventure.store.workspace import Workspace, slugify
+from openadventure.store.workspace import Campaign, Workspace, slugify
 
 
 def test_slugify():
@@ -53,6 +53,19 @@ def test_duplicate_campaign_rejected(tmp_path):
     ws.create_campaign("Foo")
     with pytest.raises(FileExistsError):
         ws.create_campaign("foo")
+
+
+def test_failed_campaign_initialization_releases_slug(tmp_path, monkeypatch):
+    ws = Workspace(tmp_path)
+
+    def fail_save(_campaign, _meta):
+        raise OSError("simulated metadata write failure")
+
+    monkeypatch.setattr(Campaign, "save_meta", fail_save)
+    with pytest.raises(OSError, match="simulated metadata write failure"):
+        ws.create_campaign("Recoverable Name")
+
+    assert not (ws.campaigns_dir / "recoverable-name").exists()
 
 
 def test_list_campaigns(tmp_path):

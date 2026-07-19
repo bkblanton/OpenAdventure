@@ -329,14 +329,6 @@ class Workspace:
         root = self.campaigns_dir / slug
         if root.exists():
             raise FileExistsError(f"campaign {slug!r} already exists")
-        campaign = Campaign(root)
-        for d in (
-            campaign.characters_dir,
-            campaign.npcs_dir,
-            campaign.notes_dir,
-            campaign.docs_dir,
-        ):
-            d.mkdir(parents=True, exist_ok=True)
         src = _dedupe(slugify(s) for s in (sources or []))
         sys_src = slugify(system_source) if system_source else (src[0] if src else None)
         mod_slugs = _dedupe(slugify(m) for m in (modules or []))
@@ -344,26 +336,47 @@ class Workspace:
             ensure_book_type(self, source_slug, "source")
         for module_slug in mod_slugs:
             ensure_book_type(self, module_slug, "module")
-        module_refs = [
-            ModuleRef(slug=s, title=titleize(s), order=i) for i, s in enumerate(mod_slugs)
-        ]
-        active = mod_slugs[0] if mod_slugs else None
-        for ref in module_refs:
-            if ref.slug == active:
-                ref.status = "active"
-        meta = CampaignMeta(
-            name=name,
-            slug=slug,
-            mode=mode,
-            sources=src,
-            system_source=sys_src,
-            modules=module_refs,
-            active_module=active,
-            premise=premise,
-            created_at=datetime.now(UTC).isoformat(timespec="seconds"),
-            settings=settings or {},
-        )
-        campaign.save_meta(meta)
+        try:
+            # Atomically reserve the campaign slug after validation. This keeps
+            # bad book selections from leaving a poisoned directory and closes
+            # the check-then-create race between concurrent frontends.
+            root.mkdir()
+        except FileExistsError:
+            raise FileExistsError(f"campaign {slug!r} already exists") from None
+        try:
+            campaign = Campaign(root)
+            for d in (
+                campaign.characters_dir,
+                campaign.npcs_dir,
+                campaign.notes_dir,
+                campaign.docs_dir,
+            ):
+                d.mkdir()
+            module_refs = [
+                ModuleRef(slug=s, title=titleize(s), order=i) for i, s in enumerate(mod_slugs)
+            ]
+            active = mod_slugs[0] if mod_slugs else None
+            for ref in module_refs:
+                if ref.slug == active:
+                    ref.status = "active"
+            meta = CampaignMeta(
+                name=name,
+                slug=slug,
+                mode=mode,
+                sources=src,
+                system_source=sys_src,
+                modules=module_refs,
+                active_module=active,
+                premise=premise,
+                created_at=datetime.now(UTC).isoformat(timespec="seconds"),
+                settings=settings or {},
+            )
+            campaign.save_meta(meta)
+        except BaseException:
+            # This process reserved the root above, so it is safe to remove if
+            # any later initialization step fails. A retry can then use the slug.
+            shutil.rmtree(root, ignore_errors=True)
+            raise
         return campaign
 
     def delete_campaign(self, slug: str) -> None:

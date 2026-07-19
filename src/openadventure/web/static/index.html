@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#12100d">
+    <meta
+      name="description"
+      content="Play and manage OpenAdventure tabletop campaigns in your browser."
+    >
+    <title>OpenAdventure</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <section id="library-view" class="view library-view" aria-labelledby="library-heading">
+        <header class="site-header">
+          <a class="brand" href="/" aria-label="OpenAdventure home">
+            <span class="brand-mark" aria-hidden="true">OA</span>
+            <span class="brand-name">OpenAdventure</span>
+          </a>
+          <button id="new-campaign-button" class="button button-primary" type="button">
+            New campaign
+          </button>
+        </header>
+
+        <main class="library-main">
+          <section class="library-intro">
+            <p class="eyebrow">Your table is ready</p>
+            <h1 id="library-heading">Choose an adventure</h1>
+            <p>
+              Continue a living campaign or gather the party around a fresh story.
+              Rules, rolls, and state stay grounded in OpenAdventure.
+            </p>
+          </section>
+
+          <div id="library-status" class="inline-status" role="status" aria-live="polite">
+            Loading campaigns…
+          </div>
+          <div id="campaign-grid" class="campaign-grid" aria-live="polite"></div>
+
+          <section id="empty-library" class="empty-library" hidden>
+            <div class="empty-sigil" aria-hidden="true">20</div>
+            <h2>No campaigns yet</h2>
+            <p>Create your first table, attach any ingested books, and start playing.</p>
+            <button class="button button-primary" type="button" data-open-create>
+              Create a campaign
+            </button>
+          </section>
+        </main>
+      </section>
+
+      <section id="play-view" class="view play-view" hidden aria-label="Campaign play view">
+        <header class="play-header">
+          <button id="back-button" class="icon-button back-button" type="button">
+            <span aria-hidden="true">←</span>
+            <span class="back-label">Campaigns</span>
+          </button>
+          <div class="campaign-heading">
+            <div class="campaign-title-line">
+              <h1 id="campaign-title">Campaign</h1>
+              <span id="campaign-mode-badge" class="badge">GM mode</span>
+            </div>
+            <p id="campaign-subtitle">Preparing your table…</p>
+          </div>
+          <div class="header-actions">
+            <div id="connection-chip" class="connection-chip" role="status">
+              <span class="connection-dot" aria-hidden="true"></span>
+              <span id="connection-label">Connecting</span>
+            </div>
+            <button
+              id="inspector-toggle"
+              class="icon-button inspector-toggle"
+              type="button"
+              aria-controls="inspector"
+              aria-expanded="false"
+            >
+              Game state
+            </button>
+            <button id="settings-button" class="icon-button" type="button">
+              Settings
+            </button>
+          </div>
+        </header>
+
+        <div id="connection-notice" class="connection-notice" hidden role="alert">
+          <div>
+            <strong id="connection-notice-title">The GM is not connected</strong>
+            <p id="connection-notice-message"></p>
+          </div>
+          <button id="connection-settings-button" class="button button-quiet" type="button">
+            Open settings
+          </button>
+        </div>
+
+        <div class="game-layout">
+          <main class="story-column">
+            <nav class="quick-actions" aria-label="Campaign actions">
+              <button class="quick-action" type="button" data-action="roll">
+                <span aria-hidden="true">⚄</span> Roll
+              </button>
+              <button class="quick-action" type="button" data-action="undo">
+                <span aria-hidden="true">↶</span> Undo
+              </button>
+              <button class="quick-action" type="button" data-action="retry">
+                <span aria-hidden="true">↻</span> Retry
+              </button>
+              <button class="quick-action" type="button" data-action="recap">
+                <span aria-hidden="true">≡</span> Recap
+              </button>
+              <button class="quick-action" type="button" data-action="compact">
+                <span aria-hidden="true">⋯</span> Compact
+              </button>
+            </nav>
+
+            <div id="transcript-scroll" class="transcript-scroll">
+              <div id="transcript" class="transcript" role="log" aria-live="polite">
+                <section id="story-empty" class="story-empty">
+                  <p class="eyebrow">At the table</p>
+                  <h2>The story begins here</h2>
+                  <p>Describe what your character does, ask the GM a question, or roll the dice.</p>
+                </section>
+              </div>
+              <button id="jump-latest" class="jump-latest" type="button" hidden>
+                New activity ↓
+              </button>
+            </div>
+
+            <section class="composer-region" aria-label="Send a message">
+              <div id="turn-status" class="turn-status" role="status" aria-live="polite">
+                <span class="turn-status-dot" aria-hidden="true"></span>
+                <span id="turn-status-text">Ready</span>
+              </div>
+
+              <div class="composer-mode-row">
+                <div class="mode-switcher" role="radiogroup" aria-label="Message type">
+                  <button
+                    class="mode-option is-selected"
+                    type="button"
+                    role="radio"
+                    aria-checked="true"
+                    data-message-kind="normal"
+                  >
+                    In character
+                  </button>
+                  <button
+                    class="mode-option"
+                    type="button"
+                    role="radio"
+                    aria-checked="false"
+                    data-message-kind="aside"
+                  >
+                    Aside
+                  </button>
+                  <button
+                    class="mode-option"
+                    type="button"
+                    role="radio"
+                    aria-checked="false"
+                    data-message-kind="steer"
+                  >
+                    Guide GM
+                  </button>
+                </div>
+                <label id="quiet-control" class="quiet-control" hidden>
+                  <input id="quiet-checkbox" type="checkbox">
+                  <span>Off the record</span>
+                </label>
+              </div>
+
+              <form id="composer-form" class="composer-form">
+                <label class="sr-only" for="composer-input">Message the Game Master</label>
+                <textarea
+                  id="composer-input"
+                  rows="2"
+                  maxlength="40000"
+                  placeholder="What do you do?"
+                  autocomplete="off"
+                  enterkeyhint="send"
+                ></textarea>
+                <div id="slash-menu" class="slash-menu" role="listbox" hidden></div>
+                <button id="cancel-turn-button" class="composer-button cancel-button" type="button" hidden>
+                  Stop
+                </button>
+                <button id="send-button" class="composer-button send-button" type="submit">
+                  Send
+                </button>
+              </form>
+              <p id="composer-hint" class="composer-hint">
+                Enter to send, Shift+Enter for a new line. Type / for shortcuts.
+              </p>
+            </section>
+          </main>
+
+          <div id="inspector-overlay" class="inspector-overlay" hidden></div>
+          <aside id="inspector" class="inspector" aria-label="Campaign state">
+            <div class="inspector-heading">
+              <div>
+                <p class="eyebrow">Live campaign</p>
+                <h2>Game state</h2>
+              </div>
+              <button id="inspector-close" class="icon-button inspector-close" type="button">
+                Close
+              </button>
+            </div>
+            <div class="inspector-tabs" role="tablist" aria-label="Game state panels">
+              <button
+                id="party-tab"
+                class="inspector-tab is-selected"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                aria-controls="inspector-content"
+                data-inspector-tab="party"
+              >
+                Party <span id="party-count" class="tab-count">0</span>
+              </button>
+              <button
+                id="scene-tab"
+                class="inspector-tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="inspector-content"
+                data-inspector-tab="scene"
+              >
+                Scene
+              </button>
+              <button
+                id="encounter-tab"
+                class="inspector-tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="inspector-content"
+                data-inspector-tab="encounter"
+              >
+                Encounter
+              </button>
+              <button
+                id="clocks-tab"
+                class="inspector-tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="inspector-content"
+                data-inspector-tab="clocks"
+              >
+                Clocks <span id="clock-count" class="tab-count">0</span>
+              </button>
+            </div>
+            <div id="inspector-content" class="inspector-content" role="tabpanel"></div>
+          </aside>
+        </div>
+      </section>
+    </div>
+
+    <dialog id="create-dialog" class="dialog campaign-dialog">
+      <form id="create-form" method="dialog" class="dialog-card">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Gather the party</p>
+            <h2>New campaign</h2>
+          </div>
+          <button class="dialog-close" type="button" data-close-dialog aria-label="Close">×</button>
+        </div>
+
+        <label class="field">
+          <span>Campaign name</span>
+          <input id="create-name" name="name" type="text" maxlength="100" required autofocus>
+        </label>
+
+        <fieldset class="choice-fieldset">
+          <legend>How are you playing?</legend>
+          <label class="choice-card">
+            <input type="radio" name="mode" value="gm" checked>
+            <span>
+              <strong>AI Game Master</strong>
+              <small>You play while OpenAdventure runs the world.</small>
+            </span>
+          </label>
+          <label class="choice-card">
+            <input type="radio" name="mode" value="assistant">
+            <span>
+              <strong>GM assistant</strong>
+              <small>You run the table with rules and campaign support.</small>
+            </span>
+          </label>
+        </fieldset>
+
+        <label class="field">
+          <span>Premise <small>optional</small></span>
+          <textarea
+            id="create-premise"
+            name="premise"
+            rows="3"
+            maxlength="2000"
+            placeholder="A storm strands the party at an impossible inn…"
+          ></textarea>
+        </label>
+
+        <div class="book-pickers">
+          <fieldset class="book-picker">
+            <legend>Rules sources</legend>
+            <p>Choose the books the GM can search.</p>
+            <div id="source-options" class="book-options"></div>
+          </fieldset>
+          <fieldset class="book-picker">
+            <legend>Adventure modules</legend>
+            <p>Choose published adventures for this campaign.</p>
+            <div id="module-options" class="book-options"></div>
+          </fieldset>
+        </div>
+
+        <p id="create-error" class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
+          <button id="create-submit" class="button button-primary" type="submit">
+            Create campaign
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="settings-dialog" class="dialog settings-dialog">
+      <form id="settings-form" method="dialog" class="dialog-card">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">At this table</p>
+            <h2>Campaign settings</h2>
+          </div>
+          <button class="dialog-close" type="button" data-close-dialog aria-label="Close">×</button>
+        </div>
+
+        <div id="settings-connection" class="settings-connection"></div>
+
+        <label class="field">
+          <span>Play mode</span>
+          <select id="settings-mode" name="mode">
+            <option value="gm">AI Game Master</option>
+            <option value="assistant">GM assistant</option>
+          </select>
+        </label>
+
+        <div class="settings-grid">
+          <label class="field">
+            <span>Reasoning effort</span>
+            <select id="settings-effort" name="effort">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="max">Maximum</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Narration detail</span>
+            <select id="settings-verbosity" name="verbosity">
+              <option value="low">Concise</option>
+              <option value="medium">Balanced</option>
+              <option value="high">Rich</option>
+            </select>
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Context budget <small>tokens</small></span>
+          <input
+            id="settings-context"
+            name="context_budget"
+            type="number"
+            min="16000"
+            max="1000000"
+            step="1000"
+          >
+        </label>
+
+        <label class="toggle-field">
+          <input id="settings-thinking" name="thinking" type="checkbox">
+          <span>
+            <strong>Extended thinking</strong>
+            <small>Deeper reasoning with slower turns and potentially higher cost.</small>
+          </span>
+        </label>
+
+        <p id="settings-error" class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
+          <button id="settings-submit" class="button button-primary" type="submit">
+            Save settings
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="roll-dialog" class="dialog roll-dialog">
+      <form id="roll-form" method="dialog" class="dialog-card">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Trust the dice</p>
+            <h2>Make a roll</h2>
+          </div>
+          <button class="dialog-close" type="button" data-close-dialog aria-label="Close">×</button>
+        </div>
+        <label class="field">
+          <span>Dice expression</span>
+          <input
+            id="roll-expression"
+            name="expression"
+            type="text"
+            value="d20"
+            placeholder="2d20kh1+5"
+            autocomplete="off"
+            required
+          >
+        </label>
+        <div class="roll-examples" aria-label="Dice examples">
+          <button type="button" data-roll-example="d20">d20</button>
+          <button type="button" data-roll-example="2d20kh1">Advantage</button>
+          <button type="button" data-roll-example="2d6+3">2d6+3</button>
+          <button type="button" data-roll-example="4d6kh3">4d6 keep 3</button>
+        </div>
+        <p id="roll-error" class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
+          <button id="roll-submit" class="button button-primary" type="submit">Roll dice</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+    <div id="global-status" class="sr-only" role="status" aria-live="polite"></div>
+
+    <script type="module" src="/static/app.js"></script>
+  </body>
+</html>

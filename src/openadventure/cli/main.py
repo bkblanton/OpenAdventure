@@ -456,6 +456,18 @@ def _run_repl(repl) -> None:
                 return
 
 
+def _cmd_web(args: argparse.Namespace) -> int:
+    """Run the local browser interface."""
+    from openadventure.web.app import run_server
+
+    run_server(
+        workspace=args.workspace,
+        port=args.port,
+        open_browser=not args.no_open,
+    )
+    return 0
+
+
 def _cmd_setup(args: argparse.Namespace) -> int:
     from openadventure.cli.term import make_console
     from openadventure.cli.wizard import run_setup_wizard
@@ -1034,6 +1046,11 @@ def build_parser() -> argparse.ArgumentParser:
     play.add_argument("slug", nargs="?", help="campaign slug; omit to pick interactively")
     play.add_argument("--debug", action="store_true", help="show full tool calls and diagnostics")
     play.set_defaults(func=_cmd_play)
+
+    web = sub.add_parser("web", help="play in a local browser")
+    web.add_argument("--port", type=int, default=8000, help="localhost port (default: 8000)")
+    web.add_argument("--no-open", action="store_true", help="do not open a browser automatically")
+    web.set_defaults(func=_cmd_web)
 
     new = sub.add_parser("new", help="create a new campaign")
     new.add_argument("name", help="campaign name")

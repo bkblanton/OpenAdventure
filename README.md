@@ -34,6 +34,32 @@ Then just talk: *"roll me a dwarf fighter"*, *"I kick open the door"*, *"give us
 
 Bare `uv run openadventure` drops you into the play flow and lets you pick a campaign interactively. `uv run openadventure campaigns` lists them.
 
+## Local web app
+
+Start the browser interface with:
+
+```powershell
+uv run openadventure web
+```
+
+OpenAdventure binds to `http://127.0.0.1:8000` and opens it in your default browser. It uses
+the same Python engine, workspace, campaigns, books, characters, and event log as the terminal
+interface. You can create or switch campaigns, stream turns as the GM responds, roll dice,
+undo or retry turns, request a recap, tune campaign settings, and keep the party, scene,
+encounter, and progress clocks visible while you play.
+
+Use `--port` to choose another localhost port, or `--no-open` if you do not want the browser
+opened automatically:
+
+```powershell
+uv run openadventure web --port 8765 --no-open
+```
+
+The web app stays on your machine and listens only on localhost. API keys are resolved exactly
+as they are for terminal play, from `.env`, environment variables, or `workspace/config.toml`.
+If the selected model has no key configured, the app explains which variable is missing and
+keeps local dice and campaign tools available.
+
 ## Detailed setup
 
 The steps below are optional; the wizards handle everything either way. We recommend doing them before sitting down to play, because ingestion takes time and it's faster to have it done than to wait mid-session:
