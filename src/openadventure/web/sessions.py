@@ -11,30 +11,164 @@ handle's ``lock`` while a command or turn mutates the campaign.
 from __future__ import annotations
 
 import asyncio
+import threading
+from collections import OrderedDict, deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+from urllib.parse import quote
+from uuid import uuid4
 
 from openadventure.config import AppConfig, resolve_api_key
 from openadventure.engine.session import GameSession
-from openadventure.media.host import MediaCapabilities, MediaHost, NullMediaHost
+from openadventure.media.host import MediaCapabilities, MediaHost
 from openadventure.providers.factory import build_provider
 from openadventure.store.workspace import Campaign, Workspace, slugify
 
-MediaHostFactory = Callable[[], MediaHost]
+MediaHostFactory = Callable[[Campaign], MediaHost]
 
 
-class WebMediaHost(NullMediaHost):
-    """A browser-presented media surface with no server-side playback.
+class WebMediaHost:
+    """Present generated media through browser-consumable events and URLs.
 
-    Images are delivered by ``ImageGenerated``/``ShowImage`` events and handouts
-    are a browser concern.  Speech, effects, and looping music stay disabled so
-    the engine neither spends money generating inaudible audio nor tries to use
-    speakers on the server.
+    Generation remains in the engine's configured media backends. This host only
+    records presentation instructions. The existing web event poll drains them,
+    while the controlled media route serves the referenced local files.
     """
 
-    def __init__(self) -> None:
-        super().__init__(MediaCapabilities(images=True, handouts=True))
+    def __init__(self, campaign: Campaign, *, music_volume: float = 0.2) -> None:
+        self.campaign = campaign
+        self._capabilities = MediaCapabilities.all()
+        self._events: deque[dict[str, Any]] = deque()
+        self._audio: OrderedDict[str, Path] = OrderedDict()
+        self._lock = threading.Lock()
+        self._music_prompt: str | None = None
+        self._music_length: float | None = None
+        self._music_volume = max(0.0, min(1.0, float(music_volume)))
+        self._audio_active = False
+
+    @property
+    def capabilities(self) -> MediaCapabilities:
+        return self._capabilities
+
+    def _media_url(self, kind: str, path: Path) -> str | None:
+        roots = {"images": self.campaign.images_dir, "music": self.campaign.music_dir}
+        root = roots.get(kind)
+        if root is None:
+            return None
+        try:
+            relative = Path(path).resolve(strict=True).relative_to(root.resolve())
+        except FileNotFoundError, OSError, ValueError:
+            return None
+        slug = quote(self.campaign.load_meta().slug, safe="")
+        encoded = quote(relative.as_posix(), safe="/")
+        return f"/api/campaigns/{slug}/media/{kind}/{encoded}"
+
+    def _audio_url(self, path: Path) -> str | None:
+        try:
+            target = Path(path).resolve(strict=True)
+        except FileNotFoundError, OSError:
+            return None
+        token = uuid4().hex
+        with self._lock:
+            self._audio[token] = target
+            while len(self._audio) > 256:
+                self._audio.popitem(last=False)
+        slug = quote(self.campaign.load_meta().slug, safe="")
+        return f"/api/campaigns/{slug}/media/audio/{token}"
+
+    def _emit(self, payload: dict[str, Any]) -> None:
+        with self._lock:
+            self._events.append(payload)
+
+    async def play_speech(self, path: Path) -> None:
+        url = self._audio_url(path)
+        if url:
+            with self._lock:
+                self._audio_active = True
+                self._events.append({"type": "audio_ready", "kind": "speech", "path": url})
+
+    async def play_sound_effect(self, path: Path) -> None:
+        url = self._audio_url(path)
+        if url:
+            with self._lock:
+                self._audio_active = True
+                self._events.append({"type": "audio_ready", "kind": "sound_effect", "path": url})
+
+    def play_music(
+        self, path: Path, *, prompt: str = "", length_seconds: float | None = None
+    ) -> None:
+        url = self._media_url("music", path)
+        if url is None:
+            return
+        with self._lock:
+            self._music_prompt = prompt
+            self._music_length = length_seconds
+            self._events.append(
+                {
+                    "type": "music_started",
+                    "track": url,
+                    "mood": prompt,
+                    "length_seconds": length_seconds,
+                }
+            )
+
+    def stop_music(self) -> None:
+        with self._lock:
+            self._music_prompt = None
+            self._music_length = None
+            self._events.append({"type": "music_stopped"})
+
+    def set_music_volume(self, value: float) -> float:
+        volume = max(0.0, min(1.0, float(value)))
+        with self._lock:
+            self._music_volume = volume
+            self._events.append({"type": "media_volume", "kind": "music", "value": volume})
+        return volume
+
+    def music_volume(self) -> float:
+        with self._lock:
+            return self._music_volume
+
+    def music_status_line(self) -> str | None:
+        with self._lock:
+            if self._music_prompt is None:
+                return None
+            length = f" ({int(self._music_length)}s track)" if self._music_length else ""
+            return (
+                f"looping {self._music_prompt!r}{length} "
+                f"at volume {int(round(self._music_volume * 100))}%"
+            )
+
+    def stop_audio(self) -> None:
+        with self._lock:
+            if not self._audio_active:
+                return
+            self._audio_active = False
+            self._events = deque(event for event in self._events if event["type"] != "audio_ready")
+            self._events.append({"type": "audio_stopped"})
+
+    def present_image(self, path: Path, *, caption: str = "") -> None:
+        url = self._media_url("images", path)
+        if url:
+            self._emit({"type": "show_image", "path": url, "caption": caption})
+
+    def present_handout(self, title: str, body: str, *, path: Path | None = None) -> None:
+        self._emit({"type": "handout", "title": title, "body": body})
+
+    def drain_events(self) -> list[dict[str, Any]]:
+        with self._lock:
+            events = list(self._events)
+            self._events.clear()
+        return events
+
+    def resolve_audio(self, token: str) -> Path | None:
+        if len(token) != 32 or not token.isalnum():
+            return None
+        with self._lock:
+            path = self._audio.get(token)
+        return path if path is not None and path.is_file() else None
 
 
 @dataclass
@@ -66,7 +200,12 @@ class SessionManager:
         self.config = config
         self.workspace = workspace or Workspace(config.workspace_dir)
         self.workspace.ensure()
-        self._media_host_factory = media_host_factory or WebMediaHost
+        self._media_host_factory = media_host_factory or (
+            lambda campaign: WebMediaHost(
+                campaign,
+                music_volume=float(config.media.get("music_volume", 0.2)),
+            )
+        )
         self._docs = docs
         self._sessions: dict[str, SessionHandle] = {}
         self._creation_lock = asyncio.Lock()
@@ -168,11 +307,12 @@ class SessionManager:
             self.workspace,
             campaign,
             provider=None,
-            media_host=self._media_host_factory(),
+            media_host=self._media_host_factory(campaign),
             docs=self._docs,
         )
         provider_name = session.provider_name()
         api_key = resolve_api_key(self.config, provider_name)
         if api_key:
             session.provider = build_provider(provider_name, api_key, session.models)
+        session.resume_music()
         return session

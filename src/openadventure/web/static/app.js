@@ -16,6 +16,7 @@ const dom = {
   libraryStatus: $("library-status"),
   campaignGrid: $("campaign-grid"),
   emptyLibrary: $("empty-library"),
+  libraryButton: $("library-button"),
   newCampaignButton: $("new-campaign-button"),
   backButton: $("back-button"),
   campaignTitle: $("campaign-title"),
@@ -28,6 +29,7 @@ const dom = {
   connectionNoticeMessage: $("connection-notice-message"),
   connectionSettingsButton: $("connection-settings-button"),
   settingsButton: $("settings-button"),
+  playLibraryButton: $("play-library-button"),
   transcriptScroll: $("transcript-scroll"),
   transcript: $("transcript"),
   storyEmpty: $("story-empty"),
@@ -60,13 +62,57 @@ const dom = {
   settingsDialog: $("settings-dialog"),
   settingsForm: $("settings-form"),
   settingsMode: $("settings-mode"),
+  settingsModel: $("settings-model"),
   settingsEffort: $("settings-effort"),
   settingsThinking: $("settings-thinking"),
   settingsVerbosity: $("settings-verbosity"),
   settingsContext: $("settings-context"),
+  settingsTts: $("settings-tts"),
+  settingsSfx: $("settings-sfx"),
+  settingsImages: $("settings-images"),
+  settingsImagesAuto: $("settings-images-auto"),
+  settingsMusic: $("settings-music"),
+  settingsMusicAuto: $("settings-music-auto"),
+  settingsMusicVolume: $("settings-music-volume"),
+  settingsMusicVolumeOutput: $("settings-music-volume-output"),
+  mediaSettingsStatus: $("media-settings-status"),
   settingsConnection: $("settings-connection"),
   settingsError: $("settings-error"),
   settingsSubmit: $("settings-submit"),
+  libraryDialog: $("library-dialog"),
+  libraryBooks: $("library-books"),
+  showIngestButton: $("show-ingest-button"),
+  hideIngestButton: $("hide-ingest-button"),
+  ingestPanel: $("ingest-panel"),
+  ingestForm: $("ingest-form"),
+  ingestDropZone: $("ingest-drop-zone"),
+  ingestFile: $("ingest-file"),
+  ingestFileLabel: $("ingest-file-label"),
+  ingestType: $("ingest-type"),
+  ingestName: $("ingest-name"),
+  ingestPages: $("ingest-pages"),
+  ingestError: $("ingest-error"),
+  ingestSubmit: $("ingest-submit"),
+  libraryJob: $("library-job"),
+  libraryJobKicker: $("library-job-kicker"),
+  libraryJobTitle: $("library-job-title"),
+  libraryJobState: $("library-job-state"),
+  libraryJobCancel: $("library-job-cancel"),
+  libraryJobMessage: $("library-job-message"),
+  libraryJobProgressWrap: $("library-job-progress-wrap"),
+  libraryJobProgress: $("library-job-progress"),
+  libraryJobProgressLabel: $("library-job-progress-label"),
+  libraryJobActivity: $("library-job-activity"),
+  libraryJobError: $("library-job-error"),
+  jobGlyph: $("job-glyph"),
+  campaignLibraryPanel: $("campaign-library-panel"),
+  campaignLibraryForm: $("campaign-library-form"),
+  campaignSourceOptions: $("campaign-source-options"),
+  campaignModuleOptions: $("campaign-module-options"),
+  campaignSystemSource: $("campaign-system-source"),
+  campaignActiveModule: $("campaign-active-module"),
+  campaignLibraryError: $("campaign-library-error"),
+  campaignLibrarySubmit: $("campaign-library-submit"),
   rollDialog: $("roll-dialog"),
   rollForm: $("roll-form"),
   rollExpression: $("roll-expression"),
@@ -74,6 +120,14 @@ const dom = {
   rollSubmit: $("roll-submit"),
   toastRegion: $("toast-region"),
   globalStatus: $("global-status"),
+  mediaDock: $("media-dock"),
+  mediaDockKind: $("media-dock-kind"),
+  mediaDockTitle: $("media-dock-title"),
+  mediaDockStatus: $("media-dock-status"),
+  mediaPlayButton: $("media-play-button"),
+  mediaDockVolume: $("media-dock-volume"),
+  foregroundAudioPlayer: $("foreground-audio-player"),
+  musicPlayer: $("music-player"),
 };
 
 const shortcuts = [
@@ -82,16 +136,20 @@ const shortcuts = [
   { command: "/retry", template: "/retry", description: "Retry the last turn" },
   { command: "/recap", template: "/recap", description: "Recall the story so far" },
   { command: "/compact", template: "/compact", description: "Update the rolling story summary" },
+  { command: "/library", template: "/library", description: "Manage books for this campaign" },
+  { command: "/ingest", template: "/ingest", description: "Add a rule source or adventure module" },
+  { command: "/template", template: "/template ", description: "Derive a character sheet template" },
   { command: "/btw", template: "/btw ", description: "Ask an off-record rules question" },
   { command: "/sudo", template: "/sudo ", description: "Guide the GM out of character" },
 ];
 
 const store = {
-  bootstrap: { campaigns: [], books: [] },
+  bootstrap: { campaigns: [], books: [], models: [], utilityModel: "" },
   slug: null,
   campaign: null,
   settings: {},
   provider: null,
+  media: {},
   history: [],
   gameState: {},
   busy: false,
@@ -105,6 +163,19 @@ const store = {
   pollTimer: null,
   pollInFlight: false,
   pollHadError: false,
+  libraryJobId: null,
+  libraryJobTimer: null,
+  libraryJobActivity: [],
+  targetedTemplate: null,
+  audio: {
+    active: null,
+    currentClip: null,
+    queue: [],
+    foregroundVolumes: { narration: 1, sound_effect: 1 },
+    musicTitle: "",
+    waitingForGesture: false,
+    volumeTimer: null,
+  },
 };
 
 function errorMessage(error) {
@@ -335,22 +406,239 @@ function renderImage(event) {
   appendTranscript(figure);
 }
 
-function renderMusic(event) {
-  const card = node("section", "media-card");
-  const caption = node("div", "media-caption", event.type === "music_stopped" ? "Music stopped" : `Now playing: ${event.mood || event.track || "campaign ambience"}`);
-  card.append(caption);
-  const url = safeMediaUrl(event.url || event.path || event.track);
-  if (url && event.type !== "music_stopped") {
-    const audio = node("audio");
-    audio.controls = true;
-    audio.loop = true;
-    audio.src = url;
-    card.append(audio);
-    audio.play().catch(() => {
-      // Browsers may require the player to press play after a user gesture.
-    });
+function clampVolume(value, fallback = 0.2) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : fallback;
+}
+
+function setMediaDock(kind, title, status = "") {
+  dom.mediaDock.hidden = false;
+  dom.mediaDockKind.textContent = kind;
+  dom.mediaDockTitle.textContent = title || "Campaign audio";
+  dom.mediaDockStatus.textContent = status;
+  const player = activeMediaPlayer();
+  const paused = !player || player.paused;
+  dom.mediaDock.classList.toggle("is-paused", paused);
+  dom.mediaPlayButton.textContent = paused ? "Play" : "Pause";
+  dom.mediaPlayButton.setAttribute("aria-label", paused ? "Play audio" : "Pause audio");
+}
+
+function activeMediaPlayer() {
+  switch (store.audio.active) {
+    case "narration":
+    case "sound_effect":
+      return dom.foregroundAudioPlayer;
+    case "music":
+      return dom.musicPlayer;
+    default:
+      return null;
   }
+}
+
+function restoreMediaDock() {
+  const clip = store.audio.currentClip;
+  if (clip) {
+    store.audio.active = clip.kind;
+    const status = dom.foregroundAudioPlayer.paused
+      ? store.audio.waitingForGesture
+        ? "Press Play to hear this in your browser"
+        : "Paused"
+      : "";
+    setMediaDock(clip.kind === "sound_effect" ? "Sound effect" : "Spoken narration", clip.title, status);
+    return;
+  }
+  if (dom.musicPlayer.src) {
+    store.audio.active = "music";
+    setMediaDock(
+      "Background music",
+      store.audio.musicTitle || "Campaign ambience",
+      dom.musicPlayer.paused ? "Paused" : "Looping",
+    );
+    return;
+  }
+  store.audio.active = null;
+  dom.mediaDock.hidden = true;
+}
+
+function stopBrowserMedia() {
+  for (const player of [dom.foregroundAudioPlayer, dom.musicPlayer]) {
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+  }
+  store.audio.active = null;
+  store.audio.currentClip = null;
+  store.audio.queue.length = 0;
+  store.audio.musicTitle = "";
+  store.audio.waitingForGesture = false;
+  dom.mediaDock.hidden = true;
+}
+
+async function playBrowserAudio(player, kind, title, status = "", guard = null) {
+  const canOwnDock = () =>
+    (!guard || guard()) && (kind !== "music" || !store.audio.currentClip);
+  if (canOwnDock()) {
+    store.audio.active = kind;
+    setMediaDock(
+      kind === "music"
+        ? "Background music"
+        : kind === "sound_effect"
+          ? "Sound effect"
+          : "Spoken narration",
+      title,
+      status,
+    );
+  }
+  try {
+    await player.play();
+    if (!canOwnDock()) return;
+    store.audio.waitingForGesture = false;
+    setMediaDock(dom.mediaDockKind.textContent, title, status);
+  } catch {
+    if (!canOwnDock()) return;
+    store.audio.waitingForGesture = true;
+    setMediaDock(dom.mediaDockKind.textContent, title, "Press Play to hear this in your browser");
+  }
+}
+
+function mediaUrl(event) {
+  return safeMediaUrl(event.url || event.path || event.track || event.src);
+}
+
+function audioChannel(event) {
+  const value = String(event.kind || event.channel || event.audio_type || "narration").toLowerCase();
+  return value.includes("sfx") || value.includes("effect") ? "sound_effect" : "narration";
+}
+
+function handleAudioReady(event) {
+  const url = mediaUrl(event);
+  if (!url) return;
+  const channel = audioChannel(event);
+  const title =
+    event.label ||
+    event.caption ||
+    event.text ||
+    (channel === "sound_effect" ? "Scene sound" : "Game Master narration");
+  store.audio.queue.push({
+    kind: channel,
+    title,
+    url,
+    volume: event.volume === undefined ? null : clampVolume(event.volume, 1),
+  });
+  playNextForegroundClip();
+}
+
+function playNextForegroundClip() {
+  if (store.audio.currentClip || store.audio.queue.length === 0) return;
+  const clip = store.audio.queue.shift();
+  store.audio.currentClip = clip;
+  dom.foregroundAudioPlayer.src = clip.url;
+  dom.foregroundAudioPlayer.volume = clip.volume ?? store.audio.foregroundVolumes[clip.kind] ?? 1;
+  playBrowserAudio(
+    dom.foregroundAudioPlayer,
+    clip.kind,
+    clip.title,
+    "",
+    () => store.audio.currentClip === clip,
+  );
+}
+
+function finishForegroundClip() {
+  dom.foregroundAudioPlayer.pause();
+  dom.foregroundAudioPlayer.removeAttribute("src");
+  dom.foregroundAudioPlayer.load();
+  store.audio.currentClip = null;
+  store.audio.waitingForGesture = false;
+  if (store.audio.queue.length > 0) {
+    playNextForegroundClip();
+  } else {
+    restoreMediaDock();
+  }
+}
+
+function handleAudioStopped() {
+  store.audio.queue.length = 0;
+  dom.foregroundAudioPlayer.pause();
+  dom.foregroundAudioPlayer.removeAttribute("src");
+  dom.foregroundAudioPlayer.load();
+  store.audio.currentClip = null;
+  store.audio.waitingForGesture = false;
+  restoreMediaDock();
+}
+
+function renderMusic(event) {
+  const stopped = event.type === "music_stopped";
+  const title = event.mood || event.prompt || event.label || event.track_name || "campaign ambience";
+  const card = node("section", "media-card");
+  card.append(node("div", "media-caption", stopped ? "Music stopped" : `Now playing: ${title}`));
   appendTranscript(card);
+
+  if (stopped) {
+    dom.musicPlayer.pause();
+    dom.musicPlayer.removeAttribute("src");
+    dom.musicPlayer.load();
+    store.audio.musicTitle = "";
+    restoreMediaDock();
+    return;
+  }
+
+  const url = mediaUrl(event);
+  if (!url) return;
+  store.audio.musicTitle = title;
+  if (dom.musicPlayer.getAttribute("src") !== url) dom.musicPlayer.src = url;
+  dom.musicPlayer.volume = clampVolume(event.volume, dom.mediaDockVolume.value || 0.2);
+  dom.mediaDockVolume.value = String(dom.musicPlayer.volume);
+  playBrowserAudio(dom.musicPlayer, "music", title, "Looping");
+}
+
+function handleMediaVolume(event) {
+  const values = event.volumes && typeof event.volumes === "object" ? event.volumes : null;
+  const channel = String(event.kind || event.channel || "music").toLowerCase();
+  const direct = event.volume ?? event.value;
+  if (values) {
+    if (values.music !== undefined) dom.musicPlayer.volume = clampVolume(values.music);
+    if (values.tts !== undefined || values.narration !== undefined) {
+      setForegroundVolume("narration", values.tts ?? values.narration);
+    }
+    if (values.sfx !== undefined || values.sound_effects !== undefined) {
+      setForegroundVolume("sound_effect", values.sfx ?? values.sound_effects);
+    }
+  } else if (channel.includes("music")) {
+    dom.musicPlayer.volume = clampVolume(direct);
+  } else if (channel.includes("sfx") || channel.includes("effect")) {
+    setForegroundVolume("sound_effect", direct);
+  } else {
+    setForegroundVolume("narration", direct);
+  }
+  dom.mediaDockVolume.value = String(dom.musicPlayer.volume);
+  if (store.media && typeof store.media === "object") {
+    store.media.music_volume = dom.musicPlayer.volume;
+  }
+}
+
+function setForegroundVolume(kind, value) {
+  const volume = clampVolume(value, 1);
+  store.audio.foregroundVolumes[kind] = volume;
+  if (store.audio.currentClip?.kind === kind) {
+    store.audio.currentClip.volume = volume;
+    dom.foregroundAudioPlayer.volume = volume;
+  }
+}
+
+function syncMediaPayload(media) {
+  if (!media || typeof media !== "object") return;
+  const volume = clampVolume(media.music_volume ?? media.volumes?.music, 0.2);
+  dom.musicPlayer.volume = volume;
+  dom.mediaDockVolume.value = String(volume);
+  const current = media.now_playing || media.current_music || media.music_track;
+  if (!current) return;
+  const event = typeof current === "string" ? { url: current } : current;
+  const url = mediaUrl(event);
+  if (!url) return;
+  const title = event.mood || event.prompt || event.label || event.title || "campaign ambience";
+  store.audio.musicTitle = title;
+  if (dom.musicPlayer.getAttribute("src") !== url) dom.musicPlayer.src = url;
+  playBrowserAudio(dom.musicPlayer, "music", title, "Looping");
 }
 
 function renderEngineError(event) {
@@ -452,9 +740,18 @@ function handleEngineEvent(rawEvent, { background = false } = {}) {
     case "show_image":
       renderImage(event);
       break;
+    case "audio_ready":
+      handleAudioReady(event);
+      break;
+    case "audio_stopped":
+      handleAudioStopped(event);
+      break;
     case "music_started":
     case "music_stopped":
       renderMusic(event);
+      break;
+    case "media_volume":
+      handleMediaVolume(event);
       break;
     case "compaction_started":
       appendTranscript(systemMessage("The chronicler is updating the story so far…", { label: "Chronicler" }));
@@ -480,10 +777,23 @@ function handleEngineEvent(rawEvent, { background = false } = {}) {
 
 function normalizePayload(payload) {
   const campaign = payload?.campaign || payload?.meta || null;
+  const rawMedia = payload?.media;
+  const media = rawMedia && typeof rawMedia === "object"
+    ? { ...(rawMedia.settings || {}), ...rawMedia }
+    : {
+        tts_enabled: campaign?.tts_enabled,
+        sound_effects_enabled: campaign?.sound_effects_enabled,
+        images_enabled: campaign?.images_enabled,
+        images_auto: campaign?.images_auto,
+        music_enabled: campaign?.music_enabled,
+        music_auto: campaign?.music_auto,
+        music_volume: campaign?.music_volume,
+      };
   return {
     campaign,
     settings: payload?.settings || campaign?.settings || {},
     provider: payload?.provider || payload?.connection || null,
+    media,
     history: Array.isArray(payload?.history) ? payload.history : [],
     state: payload?.state || {},
   };
@@ -496,6 +806,8 @@ function applyPayload(payload, { renderTranscript = true } = {}) {
   store.slug = normalized.campaign.slug || store.slug;
   store.settings = normalized.settings;
   store.provider = normalized.provider;
+  store.media = normalized.media || {};
+  syncMediaPayload(store.media);
   store.history = normalized.history;
   store.gameState = normalized.state;
   updateCampaignHeader();
@@ -506,8 +818,22 @@ function applyPayload(payload, { renderTranscript = true } = {}) {
 
 function applyState(state) {
   store.gameState = state || {};
+  if (store.gameState.media && typeof store.gameState.media === "object") {
+    store.media = { ...store.media, ...store.gameState.media };
+  }
   if (store.gameState.meta && typeof store.gameState.meta === "object") {
     store.campaign = { ...(store.campaign || {}), ...store.gameState.meta };
+    for (const key of [
+      "tts_enabled",
+      "sound_effects_enabled",
+      "images_enabled",
+      "images_auto",
+      "music_enabled",
+      "music_auto",
+      "music_volume",
+    ]) {
+      if (key in store.gameState.meta) store.media[key] = store.gameState.meta[key];
+    }
     updateCampaignHeader();
   }
   const counts = stateCounts(store.gameState, store.campaign?.mode || "gm");
@@ -613,6 +939,436 @@ function renderBookOptions() {
   fill(dom.moduleOptions, modules, "modules", "module-book");
 }
 
+function modelId(model) {
+  return typeof model === "string" ? model : model?.id || model?.model || "";
+}
+
+function modelLabel(model) {
+  if (typeof model === "string") return model;
+  const id = modelId(model);
+  const name = model?.display_name || model?.name || id;
+  const provider = model?.provider || model?.backend;
+  return provider ? `${name} (${provider})` : name;
+}
+
+function populateModelSelect(select, current = "") {
+  const models = Array.isArray(store.bootstrap.models) ? store.bootstrap.models : [];
+  select.replaceChildren();
+  for (const model of models) {
+    const id = modelId(model);
+    if (!id) continue;
+    const option = node("option", "", modelLabel(model));
+    option.value = id;
+    select.append(option);
+  }
+  const selected = current || store.bootstrap.utilityModel || models.map(modelId).find(Boolean) || "";
+  if (selected && !Array.from(select.options).some((option) => option.value === selected)) {
+    const option = node("option", "", selected);
+    option.value = selected;
+    select.prepend(option);
+  }
+  select.value = selected;
+  select.disabled = select.options.length === 0;
+}
+
+function syncModelSettingsControls() {
+  const selected = (store.bootstrap.models || []).find(
+    (model) => modelId(model) === dom.settingsModel.value,
+  );
+  dom.settingsEffort.disabled = selected?.supports_effort === false;
+  dom.settingsThinking.disabled = selected?.supports_thinking === false;
+  if (Number.isFinite(Number(selected?.context_window))) {
+    dom.settingsContext.max = String(selected.context_window);
+  } else {
+    dom.settingsContext.max = "1000000";
+  }
+}
+
+function templateDetails(book) {
+  const value = book?.template;
+  if (!value) return { ready: false, fields: 0, resources: 0 };
+  if (value === true || value === "ready" || value === "complete") {
+    return { ready: true, fields: 0, resources: 0 };
+  }
+  if (typeof value !== "object") return { ready: false, fields: 0, resources: 0 };
+  const status = String(value.status || "").toLowerCase();
+  const ready = Boolean(
+    value.present ||
+      value.exists ||
+      value.ready ||
+      ["ready", "complete", "completed", "succeeded"].includes(status) ||
+      value.path ||
+      Array.isArray(value.fields),
+  );
+  const count = (raw, list) => {
+    if (Number.isFinite(Number(raw))) return Number(raw);
+    return Array.isArray(list) ? list.length : 0;
+  };
+  return {
+    ready,
+    fields: count(value.field_count ?? value.fields_count ?? value.fields, value.fields),
+    resources: count(
+      value.resource_count ?? value.resources_count ?? value.resources,
+      value.resources,
+    ),
+  };
+}
+
+function libraryBookType(book) {
+  if (book?.type === "module") return { label: "Adventure", className: "is-module" };
+  if (book?.type === "source") return { label: "Rules", className: "" };
+  return { label: "Legacy", className: "is-legacy" };
+}
+
+function renderLibraryBooks(targetSlug = store.targetedTemplate) {
+  const books = Array.isArray(store.bootstrap.books) ? store.bootstrap.books : [];
+  dom.libraryBooks.replaceChildren();
+  if (!books.length) {
+    dom.libraryBooks.append(
+      node("div", "library-empty", "No books yet. Add a rule source or adventure module to begin."),
+    );
+    return;
+  }
+
+  for (const book of books) {
+    const type = libraryBookType(book);
+    const template = templateDetails(book);
+    const card = node(
+      "article",
+      `library-book-card${targetSlug === book.slug ? " is-targeted" : ""}`,
+    );
+    card.dataset.bookSlug = book.slug;
+    const top = node("div", "book-card-top");
+    top.append(node("span", `book-type-badge ${type.className}`.trim(), type.label));
+    if (template.ready) top.append(node("span", "template-badge", "Template ready"));
+    card.append(top, node("h4", "", bookTitle(book)));
+
+    const meta = node("div", "book-card-meta");
+    meta.append(node("span", "", book.section_count ? `${book.section_count} sections` : book.slug));
+    if (book.pages) meta.append(node("span", "", `Pages ${book.pages}`));
+    if (template.ready && (template.fields || template.resources)) {
+      meta.append(node("span", "", `${template.fields} fields, ${template.resources} resources`));
+    }
+    card.append(meta);
+    if (book.warning) card.append(node("p", "book-card-note", book.warning));
+
+    if (book.type !== "module") {
+      const actions = node("div", "book-card-actions");
+      const select = node("select", "book-template-model");
+      select.setAttribute("aria-label", `Model for ${bookTitle(book)} template`);
+      populateModelSelect(
+        select,
+        store.campaign?.settings?.model || store.settings?.model || store.bootstrap.utilityModel,
+      );
+      const button = node("button", "button button-quiet", template.ready ? "Regenerate" : "Build template");
+      button.type = "button";
+      button.disabled = Boolean(store.libraryJobId) || select.disabled;
+      button.addEventListener("click", () => startTemplateJob(book, select.value));
+      actions.append(select, button);
+      card.append(actions);
+    }
+    dom.libraryBooks.append(card);
+  }
+
+  if (targetSlug) {
+    const target = dom.libraryBooks.querySelector(`[data-book-slug="${CSS.escape(targetSlug)}"]`);
+    window.setTimeout(() => {
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.querySelector("button")?.focus();
+    }, 0);
+  }
+}
+
+function orderedBooksForCampaign(kind) {
+  const books = (store.bootstrap.books || []).filter(
+    (book) => !book.type || book.type === kind,
+  );
+  const attached = kind === "source"
+    ? store.campaign?.sources || []
+    : (store.campaign?.modules || []).map((module) => module.slug || module);
+  const rank = new Map(attached.map((slug, index) => [slug, index]));
+  return [...books].sort((left, right) => {
+    const leftRank = rank.has(left.slug) ? rank.get(left.slug) : Number.MAX_SAFE_INTEGER;
+    const rightRank = rank.has(right.slug) ? rank.get(right.slug) : Number.MAX_SAFE_INTEGER;
+    return leftRank - rightRank || bookTitle(left).localeCompare(bookTitle(right));
+  });
+}
+
+function checkedValues(container) {
+  return Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map(
+    (input) => input.value,
+  );
+}
+
+function syncCampaignLibrarySelects(useCampaignDefaults = false) {
+  const selectedSources = checkedValues(dom.campaignSourceOptions);
+  const selectedModules = checkedValues(dom.campaignModuleOptions);
+  const previousSystem = useCampaignDefaults
+    ? store.campaign?.system_source || ""
+    : dom.campaignSystemSource.value || store.campaign?.system_source || "";
+  const previousActive = useCampaignDefaults
+    ? store.campaign?.active_module || ""
+    : dom.campaignActiveModule.value || store.campaign?.active_module || "";
+
+  const fill = (select, values, preferred, emptyLabel) => {
+    select.replaceChildren();
+    const empty = node("option", "", emptyLabel);
+    empty.value = "";
+    select.append(empty);
+    for (const slug of values) {
+      const book = (store.bootstrap.books || []).find((entry) => entry.slug === slug);
+      const option = node("option", "", bookTitle(book || { slug }));
+      option.value = slug;
+      select.append(option);
+    }
+    select.value = values.includes(preferred) ? preferred : values[0] || "";
+    select.disabled = values.length === 0;
+  };
+  fill(dom.campaignSystemSource, selectedSources, previousSystem, "No system source");
+  fill(dom.campaignActiveModule, selectedModules, previousActive, "No active module");
+}
+
+function renderCampaignLibrary() {
+  const hasCampaign = Boolean(store.campaign?.slug);
+  dom.campaignLibraryPanel.hidden = !hasCampaign;
+  if (!hasCampaign) return;
+
+  const sourceSet = new Set(store.campaign.sources || []);
+  const moduleSet = new Set(
+    (store.campaign.modules || []).map((module) => module.slug || module),
+  );
+  const fill = (container, books, selected) => {
+    container.replaceChildren();
+    if (!books.length) {
+      container.append(node("p", "book-options-empty", "No matching books in the library."));
+      return;
+    }
+    for (const book of books) {
+      const label = node("label", "book-option");
+      const input = node("input");
+      input.type = "checkbox";
+      input.value = book.slug;
+      input.checked = selected.has(book.slug);
+      input.addEventListener("change", () => syncCampaignLibrarySelects(false));
+      label.append(input, node("span", "", bookTitle(book)));
+      container.append(label);
+    }
+  };
+  fill(dom.campaignSourceOptions, orderedBooksForCampaign("source"), sourceSet);
+  fill(dom.campaignModuleOptions, orderedBooksForCampaign("module"), moduleSet);
+  syncCampaignLibrarySelects(true);
+}
+
+function jobIdentifier(payload) {
+  return payload?.job_id || payload?.id || payload?.job?.id || payload?.job?.job_id || null;
+}
+
+function normalizedJob(payload) {
+  const job = payload?.job && typeof payload.job === "object" ? payload.job : payload || {};
+  const progress = job.progress && typeof job.progress === "object" ? job.progress : {};
+  return {
+    ...job,
+    phase: progress.phase || progress.stage || job.phase || job.stage || "Working",
+    message: progress.message || progress.detail || job.message || job.detail || "Work is underway.",
+    completed: progress.completed ?? progress.current ?? job.completed ?? job.current,
+    total: progress.total ?? job.total,
+    round: progress.round ?? job.round,
+    maxRounds: progress.max_rounds ?? progress.maxRounds ?? job.max_rounds ?? job.maxRounds,
+    percent: progress.percent ?? job.percent,
+  };
+}
+
+function terminalJobState(status) {
+  return ["complete", "completed", "done", "success", "succeeded", "failed", "error", "cancelled", "canceled"].includes(
+    String(status || "").toLowerCase(),
+  );
+}
+
+function successfulJobState(status) {
+  return ["complete", "completed", "done", "success", "succeeded"].includes(
+    String(status || "").toLowerCase(),
+  );
+}
+
+function appendJobActivity(message) {
+  const clean = String(message || "").trim();
+  if (!clean || store.libraryJobActivity.at(-1) === clean) return;
+  store.libraryJobActivity.push(clean);
+  store.libraryJobActivity = store.libraryJobActivity.slice(-6);
+  dom.libraryJobActivity.replaceChildren(
+    ...store.libraryJobActivity.map((entry) => node("li", "", entry)),
+  );
+  dom.libraryJobActivity.scrollTop = dom.libraryJobActivity.scrollHeight;
+}
+
+function renderLibraryJob(payload, { kind = "ingest", title = "Library job" } = {}) {
+  const job = normalizedJob(payload);
+  const status = String(job.status || job.state || "running").toLowerCase();
+  const finished = terminalJobState(status);
+  const succeeded = successfulJobState(status);
+  dom.libraryJob.hidden = false;
+  dom.libraryJob.classList.toggle("is-complete", succeeded);
+  dom.libraryJob.classList.toggle("is-failed", finished && !succeeded);
+  dom.libraryJobKicker.textContent = kind === "template" ? "Research expedition" : "Building the library";
+  dom.libraryJobTitle.textContent = job.title || job.label || title;
+  dom.libraryJobState.textContent = succeeded ? "Ready" : finished ? status : status === "queued" ? "Queued" : "Working";
+  dom.libraryJobCancel.hidden = finished || !job.cancellable;
+  dom.libraryJobCancel.disabled = finished;
+  dom.libraryJobMessage.textContent = job.message;
+  dom.jobGlyph.textContent = succeeded ? "OK" : kind === "template" ? "T" : "OA";
+
+  const completed = Number(job.completed);
+  const total = Number(job.total);
+  if (Number.isFinite(completed) && Number.isFinite(total) && total > 0) {
+    dom.libraryJobProgress.value = Math.max(0, Math.min(total, completed));
+    dom.libraryJobProgress.max = total;
+    const percent = Math.round((completed / total) * 100);
+    dom.libraryJobProgressLabel.textContent = `${completed} of ${total} (${percent}%)`;
+  } else if (Number.isFinite(Number(job.round)) && Number.isFinite(Number(job.maxRounds))) {
+    dom.libraryJobProgress.value = Number(job.round);
+    dom.libraryJobProgress.max = Number(job.maxRounds);
+    dom.libraryJobProgressLabel.textContent = `Round ${job.round} of ${job.maxRounds}`;
+  } else if (Number.isFinite(Number(job.percent))) {
+    dom.libraryJobProgress.value = Math.max(0, Math.min(100, Number(job.percent)));
+    dom.libraryJobProgress.max = 100;
+    dom.libraryJobProgressLabel.textContent = `${Math.round(Number(job.percent))}%`;
+  } else {
+    dom.libraryJobProgress.removeAttribute("value");
+    dom.libraryJobProgressLabel.textContent = finished ? "Finished" : job.phase;
+  }
+  if (Array.isArray(job.events)) {
+    store.libraryJobActivity = job.events.slice(-6).map((item) => {
+      const phase = item?.phase || job.phase;
+      const message = item?.message || "";
+      return phase === message ? message : `${phase}: ${message}`;
+    });
+    dom.libraryJobActivity.replaceChildren(
+      ...store.libraryJobActivity.map((entry) => node("li", "", entry)),
+    );
+    dom.libraryJobActivity.scrollTop = dom.libraryJobActivity.scrollHeight;
+  } else {
+    appendJobActivity(job.phase === job.message ? job.message : `${job.phase}: ${job.message}`);
+  }
+  const error = job.error || (finished && !succeeded ? job.message : "");
+  dom.libraryJobError.textContent = error;
+  dom.libraryJobError.hidden = !error;
+}
+
+function stopLibraryJobPolling() {
+  if (store.libraryJobTimer) window.clearTimeout(store.libraryJobTimer);
+  store.libraryJobTimer = null;
+}
+
+async function pollLibraryJob(jobId, context) {
+  if (!jobId || store.libraryJobId !== jobId) return;
+  try {
+    const payload = await api.libraryJob(jobId);
+    renderLibraryJob(payload, context);
+    const job = normalizedJob(payload);
+    const status = job.status || job.state;
+    if (terminalJobState(status)) {
+      store.libraryJobId = null;
+      stopLibraryJobPolling();
+      await loadBootstrap();
+      renderLibraryBooks();
+      renderCampaignLibrary();
+      if (successfulJobState(status)) {
+        if (context.kind === "ingest") {
+          dom.ingestForm.reset();
+          dom.ingestFileLabel.textContent = "Choose a PDF, Markdown, or text file";
+        }
+        toast(context.kind === "template" ? "Character template ready." : "Book added to the library.");
+      }
+      return;
+    }
+  } catch (error) {
+    renderLibraryJob(
+      { status: "failed", message: errorMessage(error), error: errorMessage(error) },
+      context,
+    );
+    store.libraryJobId = null;
+    stopLibraryJobPolling();
+    return;
+  }
+  store.libraryJobTimer = window.setTimeout(() => pollLibraryJob(jobId, context), 900);
+}
+
+function watchLibraryJob(payload, context) {
+  const jobId = jobIdentifier(payload);
+  if (!jobId) throw new Error("The server started work without returning a job id.");
+  stopLibraryJobPolling();
+  store.libraryJobId = jobId;
+  store.libraryJobActivity = [];
+  renderLibraryJob(
+    { status: "queued", phase: "Queued", message: "The workbench is ready." },
+    context,
+  );
+  renderLibraryBooks();
+  pollLibraryJob(jobId, context);
+}
+
+async function startTemplateJob(book, model) {
+  if (store.libraryJobId) {
+    toast("Another library job is already running.");
+    return;
+  }
+  const existing = templateDetails(book).ready;
+  const overwrite = existing
+    ? window.confirm(`Replace the existing character template for ${bookTitle(book)}?`)
+    : false;
+  if (existing && !overwrite) return;
+  try {
+    const payload = await api.startTemplate(book.slug, { model, overwrite });
+    watchLibraryJob(payload, {
+      kind: "template",
+      title: `Researching ${bookTitle(book)}`,
+    });
+    dom.libraryJob.scrollIntoView({ behavior: "smooth", block: "center" });
+  } catch (error) {
+    toast(errorMessage(error), "error");
+  }
+}
+
+async function openLibrary({ focusIngest = false, templateSlug = null, bookType = null } = {}) {
+  await loadBootstrap();
+  try {
+    const overview = await api.library();
+    if (Array.isArray(overview?.books)) store.bootstrap.books = overview.books;
+    if (Array.isArray(overview?.models)) store.bootstrap.models = overview.models;
+    if (overview?.utility_model) store.bootstrap.utilityModel = overview.utility_model;
+    const activeJob = (overview?.jobs || []).find((job) =>
+      ["queued", "running"].includes(String(job?.status || "").toLowerCase()),
+    );
+    if (activeJob && !store.libraryJobId) {
+      store.libraryJobId = jobIdentifier(activeJob);
+      store.libraryJobActivity = [];
+      const context = {
+        kind: activeJob.kind || "ingest",
+        title: activeJob.label || "Library job",
+      };
+      renderLibraryJob(activeJob, context);
+      pollLibraryJob(store.libraryJobId, context);
+    }
+  } catch {
+    // Bootstrap already has enough data to manage the library. The overview is
+    // an enhancement that reconnects a refreshed page to an active long job.
+  }
+  store.targetedTemplate = templateSlug;
+  renderLibraryBooks(templateSlug);
+  if (templateSlug && !(store.bootstrap.books || []).some((book) => book.slug === templateSlug)) {
+    toast(`No library book named ${templateSlug}.`, "error");
+  }
+  renderCampaignLibrary();
+  dom.ingestError.hidden = true;
+  if (bookType) dom.ingestType.value = bookType;
+  dom.ingestPanel.hidden = !focusIngest;
+  if (!dom.libraryDialog.open) dom.libraryDialog.showModal();
+  window.setTimeout(() => {
+    if (focusIngest) dom.ingestFile.focus();
+    else if (!templateSlug) dom.showIngestButton.focus();
+  }, 0);
+}
+
 function renderCampaigns() {
   const campaigns = Array.isArray(store.bootstrap.campaigns) ? store.bootstrap.campaigns : [];
   dom.campaignGrid.replaceChildren();
@@ -652,6 +1408,8 @@ async function loadBootstrap() {
     store.bootstrap = {
       campaigns: Array.isArray(payload?.campaigns) ? payload.campaigns : [],
       books: Array.isArray(payload?.books) ? payload.books : [],
+      models: Array.isArray(payload?.models) ? payload.models : [],
+      utilityModel: payload?.utility_model || payload?.utilityModel || "",
     };
     renderCampaigns();
   } catch (error) {
@@ -667,7 +1425,9 @@ function campaignHash(slug) {
 
 async function openCampaign(slug, suppliedPayload = null, { updateUrl = true } = {}) {
   if (!slug) return;
+  const previousSlug = store.slug;
   stopEventPolling();
+  if (previousSlug && previousSlug !== slug) stopBrowserMedia();
   store.slug = slug;
   dom.libraryView.hidden = true;
   dom.playView.hidden = false;
@@ -692,6 +1452,7 @@ async function openCampaign(slug, suppliedPayload = null, { updateUrl = true } =
 function showLibrary({ updateUrl = true } = {}) {
   if (store.busy) cancelTurn();
   stopEventPolling();
+  stopBrowserMedia();
   closeInspector();
   store.slug = null;
   store.campaign = null;
@@ -871,6 +1632,21 @@ async function handleShortcut(text) {
     case "/compact":
       await runCompact();
       return true;
+    case "/library":
+      await openLibrary();
+      return true;
+    case "/ingest":
+      await openLibrary({
+        focusIngest: true,
+        bookType: /(?:^|\s)--module(?:\s|$)/.test(args) ? "module" : "source",
+      });
+      return true;
+    case "/template": {
+      const target = args.split(/\s+/).find((part) => part && !part.startsWith("--")) || null;
+      await openLibrary({ templateSlug: target });
+      if (!target) toast("Choose a rules source, then select Build template.");
+      return true;
+    }
     case "/btw":
       if (args) await sendTurn(args, "aside", true);
       else {
@@ -987,14 +1763,62 @@ function openRoll() {
   }, 0);
 }
 
+function mediaSetting(key, fallback = false) {
+  const enabledKeys = {
+    tts_enabled: "narration",
+    sound_effects_enabled: "sound_effects",
+    images_enabled: "images",
+    music_enabled: "music",
+  };
+  const automaticKeys = {
+    images_auto: "images",
+    music_auto: "music",
+  };
+  const value =
+    store.media?.[key] ??
+    (enabledKeys[key] ? store.media?.enabled?.[enabledKeys[key]] : undefined) ??
+    (automaticKeys[key] ? store.media?.automatic?.[automaticKeys[key]] : undefined) ??
+    store.campaign?.[key] ??
+    store.campaign?.settings?.[key];
+  return value === undefined || value === null ? fallback : value;
+}
+
+function syncMediaSettingsControls() {
+  dom.settingsImagesAuto.disabled = !dom.settingsImages.checked;
+  dom.settingsMusicAuto.disabled = !dom.settingsMusic.checked;
+  dom.settingsMusicVolume.disabled = !dom.settingsMusic.checked;
+  const percent = Math.round(clampVolume(dom.settingsMusicVolume.value) * 100);
+  dom.settingsMusicVolumeOutput.value = `${percent}%`;
+  dom.settingsMusicVolumeOutput.textContent = `${percent}%`;
+
+  const backends = store.media?.backends || {};
+  const unavailable = Object.entries(backends)
+    .filter(([, value]) => value && value.ready === false)
+    .map(([name]) => name.replaceAll("_", " "));
+  dom.mediaSettingsStatus.textContent = unavailable.length
+    ? `Needs server configuration: ${unavailable.join(", ")}.`
+    : "Available media backends are ready.";
+  dom.mediaSettingsStatus.classList.toggle("is-warning", unavailable.length > 0);
+}
+
 function openSettings() {
   if (!store.campaign) return;
   const settings = store.settings || store.campaign.settings || {};
   dom.settingsMode.value = store.campaign.mode || "gm";
+  populateModelSelect(dom.settingsModel, settings.model || store.campaign.settings?.model || "");
+  syncModelSettingsControls();
   dom.settingsEffort.value = settings.effort || "high";
   dom.settingsThinking.checked = Boolean(settings.thinking);
   dom.settingsVerbosity.value = settings.verbosity || "medium";
   dom.settingsContext.value = settings.context_budget || "";
+  dom.settingsTts.checked = Boolean(mediaSetting("tts_enabled"));
+  dom.settingsSfx.checked = Boolean(mediaSetting("sound_effects_enabled"));
+  dom.settingsImages.checked = Boolean(mediaSetting("images_enabled"));
+  dom.settingsImagesAuto.checked = Boolean(mediaSetting("images_auto"));
+  dom.settingsMusic.checked = Boolean(mediaSetting("music_enabled"));
+  dom.settingsMusicAuto.checked = Boolean(mediaSetting("music_auto"));
+  dom.settingsMusicVolume.value = String(clampVolume(mediaSetting("music_volume", 0.2)));
+  syncMediaSettingsControls();
   dom.settingsError.hidden = true;
 
   const connection = connectionInfo();
@@ -1070,6 +1894,7 @@ function stopEventPolling() {
 async function routeFromLocation() {
   const match = window.location.hash.match(/^#campaign\/(.+)$/);
   if (match) {
+    if (!store.bootstrap.models.length) await loadBootstrap();
     let slug;
     try {
       slug = decodeURIComponent(match[1]);
@@ -1086,6 +1911,8 @@ async function routeFromLocation() {
 
 dom.newCampaignButton.addEventListener("click", openCreate);
 document.querySelectorAll("[data-open-create]").forEach((button) => button.addEventListener("click", openCreate));
+dom.libraryButton.addEventListener("click", () => openLibrary());
+dom.playLibraryButton.addEventListener("click", () => openLibrary());
 dom.backButton.addEventListener("click", () => showLibrary());
 dom.settingsButton.addEventListener("click", openSettings);
 dom.connectionSettingsButton.addEventListener("click", openSettings);
@@ -1097,6 +1924,227 @@ dom.inspectorClose.addEventListener("click", closeInspector);
 dom.inspectorOverlay.addEventListener("click", closeInspector);
 dom.jumpLatest.addEventListener("click", () => scrollToLatest());
 dom.cancelButton.addEventListener("click", cancelTurn);
+
+dom.showIngestButton.addEventListener("click", () => {
+  dom.ingestPanel.hidden = false;
+  window.setTimeout(() => dom.ingestFile.focus(), 0);
+});
+
+dom.hideIngestButton.addEventListener("click", () => {
+  dom.ingestPanel.hidden = true;
+});
+
+dom.libraryJobCancel.addEventListener("click", async () => {
+  if (!store.libraryJobId) return;
+  dom.libraryJobCancel.disabled = true;
+  try {
+    const payload = await api.cancelLibraryJob(store.libraryJobId);
+    toast(payload?.cancelled ? "Stopping template generation..." : "This job is already finishing.");
+  } catch (error) {
+    toast(errorMessage(error), "error");
+    dom.libraryJobCancel.disabled = false;
+  }
+});
+
+dom.ingestFile.addEventListener("change", () => {
+  const file = dom.ingestFile.files?.[0];
+  dom.ingestFileLabel.textContent = file ? file.name : "Choose a PDF, Markdown, or text file";
+});
+
+for (const type of ["dragenter", "dragover"]) {
+  dom.ingestDropZone.addEventListener(type, (event) => {
+    event.preventDefault();
+    dom.ingestDropZone.classList.add("is-dragging");
+  });
+}
+
+for (const type of ["dragleave", "drop"]) {
+  dom.ingestDropZone.addEventListener(type, (event) => {
+    event.preventDefault();
+    dom.ingestDropZone.classList.remove("is-dragging");
+  });
+}
+
+dom.ingestDropZone.addEventListener("drop", (event) => {
+  const files = event.dataTransfer?.files;
+  if (!files?.length) return;
+  dom.ingestFile.files = files;
+  dom.ingestFile.dispatchEvent(new Event("change"));
+});
+
+dom.ingestForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  dom.ingestError.hidden = true;
+  if (store.libraryJobId) {
+    dom.ingestError.textContent = "Wait for the current library job to finish.";
+    dom.ingestError.hidden = false;
+    return;
+  }
+  const file = dom.ingestFile.files?.[0];
+  if (!file) {
+    dom.ingestError.textContent = "Choose a PDF, Markdown, or text file.";
+    dom.ingestError.hidden = false;
+    return;
+  }
+  const extension = file.name.toLowerCase().match(/\.(pdf|md|markdown|txt)$/)?.[1];
+  if (!extension) {
+    dom.ingestError.textContent = "Supported files are PDF, Markdown, and plain text.";
+    dom.ingestError.hidden = false;
+    return;
+  }
+  const pages = dom.ingestPages.value.trim();
+  if (pages && !/^\d+(?:-\d+)?$/.test(pages)) {
+    dom.ingestError.textContent = "Use a page or range such as 18-32.";
+    dom.ingestError.hidden = false;
+    return;
+  }
+  if (pages) {
+    const [start, end = start] = pages.split("-").map(Number);
+    if (start < 1 || end < start) {
+      dom.ingestError.textContent = "The page range must start at 1 or later and end after it starts.";
+      dom.ingestError.hidden = false;
+      return;
+    }
+  }
+  if (pages && extension !== "pdf") {
+    dom.ingestError.textContent = "Page ranges are only available for PDF files.";
+    dom.ingestError.hidden = false;
+    return;
+  }
+
+  dom.ingestSubmit.disabled = true;
+  dom.ingestSubmit.textContent = "Uploading...";
+  store.libraryJobActivity = [];
+  renderLibraryJob(
+    { status: "running", phase: "Uploading", message: `Sending ${file.name} to the local workbench.` },
+    { kind: "ingest", title: `Ingesting ${file.name}` },
+  );
+  dom.libraryJob.scrollIntoView({ behavior: "smooth", block: "center" });
+  try {
+    const payload = await api.ingest(file, {
+      bookType: dom.ingestType.value,
+      name: dom.ingestName.value.trim(),
+      pages,
+    });
+    watchLibraryJob(payload, { kind: "ingest", title: `Ingesting ${file.name}` });
+  } catch (error) {
+    const message = errorMessage(error);
+    dom.ingestError.textContent = message;
+    dom.ingestError.hidden = false;
+    renderLibraryJob(
+      { status: "failed", phase: "Upload failed", message, error: message },
+      { kind: "ingest", title: `Ingesting ${file.name}` },
+    );
+  } finally {
+    dom.ingestSubmit.disabled = false;
+    dom.ingestSubmit.textContent = "Start ingestion";
+  }
+});
+
+dom.campaignLibraryForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!store.slug || !store.campaign) return;
+  dom.campaignLibraryError.hidden = true;
+  const payload = {
+    sources: checkedValues(dom.campaignSourceOptions),
+    system_source: dom.campaignSystemSource.value || null,
+    modules: checkedValues(dom.campaignModuleOptions),
+    active_module: dom.campaignActiveModule.value || null,
+  };
+  dom.campaignLibrarySubmit.disabled = true;
+  dom.campaignLibrarySubmit.textContent = "Saving...";
+  try {
+    const response = await api.updateLibrary(store.slug, payload);
+    const campaign = response?.campaign || response?.meta || response;
+    if (campaign && typeof campaign === "object") {
+      store.campaign = { ...store.campaign, ...campaign };
+      if (response?.settings) store.settings = response.settings;
+      if (response?.media) store.media = response.media;
+      updateCampaignHeader();
+      if (response?.state) applyState(response.state);
+    }
+    renderCampaignLibrary();
+    await loadBootstrap();
+    toast("Campaign books updated.");
+  } catch (error) {
+    dom.campaignLibraryError.textContent = errorMessage(error);
+    dom.campaignLibraryError.hidden = false;
+  } finally {
+    dom.campaignLibrarySubmit.disabled = false;
+    dom.campaignLibrarySubmit.textContent = "Save campaign books";
+  }
+});
+
+for (const input of [dom.settingsImages, dom.settingsMusic, dom.settingsMusicVolume]) {
+  input.addEventListener("input", syncMediaSettingsControls);
+  input.addEventListener("change", syncMediaSettingsControls);
+}
+
+dom.settingsModel.addEventListener("change", syncModelSettingsControls);
+
+dom.mediaPlayButton.addEventListener("click", () => {
+  const player = activeMediaPlayer();
+  if (!player?.src) {
+    restoreMediaDock();
+    return;
+  }
+  if (player.paused) {
+    playBrowserAudio(
+      player,
+      store.audio.active,
+      dom.mediaDockTitle.textContent,
+      store.audio.active === "music" ? "Looping" : "",
+    );
+  } else {
+    player.pause();
+    setMediaDock(dom.mediaDockKind.textContent, dom.mediaDockTitle.textContent, "Paused");
+  }
+});
+
+dom.foregroundAudioPlayer.addEventListener("ended", finishForegroundClip);
+
+dom.foregroundAudioPlayer.addEventListener("error", () => {
+  const failedClip = store.audio.currentClip;
+  if (!failedClip) return;
+  dom.mediaDockStatus.textContent = "This audio file could not be played. Continuing to the next clip.";
+  dom.mediaDock.classList.add("is-paused");
+  window.setTimeout(() => {
+    if (store.audio.currentClip === failedClip) finishForegroundClip();
+  }, 900);
+});
+
+dom.musicPlayer.addEventListener("play", () => {
+  if (store.audio.active === "music") {
+    setMediaDock("Background music", store.audio.musicTitle || "Campaign ambience", "Looping");
+  }
+});
+
+dom.musicPlayer.addEventListener("pause", () => {
+  if (store.audio.active === "music" && dom.musicPlayer.src) {
+    setMediaDock("Background music", store.audio.musicTitle || "Campaign ambience", "Paused");
+  }
+});
+
+dom.mediaDockVolume.addEventListener("input", () => {
+  const volume = clampVolume(dom.mediaDockVolume.value);
+  dom.musicPlayer.volume = volume;
+  store.media.music_volume = volume;
+  dom.settingsMusicVolume.value = String(volume);
+  syncMediaSettingsControls();
+});
+
+dom.mediaDockVolume.addEventListener("change", () => {
+  if (!store.slug) return;
+  const volume = clampVolume(dom.mediaDockVolume.value);
+  if (store.audio.volumeTimer) window.clearTimeout(store.audio.volumeTimer);
+  store.audio.volumeTimer = window.setTimeout(async () => {
+    try {
+      await api.updateSettings(store.slug, { music_volume: volume });
+    } catch (error) {
+      toast(errorMessage(error), "error");
+    }
+  }, 180);
+});
 
 document.querySelectorAll("[data-message-kind]").forEach((button) => {
   button.addEventListener("click", () => setMessageKind(button.dataset.messageKind));
@@ -1231,9 +2279,17 @@ dom.settingsForm.addEventListener("submit", async (event) => {
   const contextBudget = Number.parseInt(dom.settingsContext.value, 10);
   const payload = {
     mode: dom.settingsMode.value,
+    model: dom.settingsModel.value,
     effort: dom.settingsEffort.value,
     thinking: dom.settingsThinking.checked,
     verbosity: dom.settingsVerbosity.value,
+    tts_enabled: dom.settingsTts.checked,
+    sound_effects_enabled: dom.settingsSfx.checked,
+    images_enabled: dom.settingsImages.checked,
+    images_auto: dom.settingsImages.checked && dom.settingsImagesAuto.checked,
+    music_enabled: dom.settingsMusic.checked,
+    music_auto: dom.settingsMusic.checked && dom.settingsMusicAuto.checked,
+    music_volume: clampVolume(dom.settingsMusicVolume.value),
   };
   if (Number.isFinite(contextBudget)) payload.context_budget = contextBudget;
   dom.settingsSubmit.disabled = true;
@@ -1317,7 +2373,10 @@ document.addEventListener("visibilitychange", () => {
 });
 
 window.addEventListener("popstate", routeFromLocation);
-window.addEventListener("beforeunload", stopEventPolling);
+window.addEventListener("beforeunload", () => {
+  stopEventPolling();
+  stopLibraryJobPolling();
+});
 
 setInspectorTab(store.inspectorTab);
 setMessageKind("normal");

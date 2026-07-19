@@ -16,6 +16,10 @@ function campaignPath(slug, suffix = "") {
   return `/api/campaigns/${encodeURIComponent(slug)}${suffix}`;
 }
 
+function bookPath(slug, suffix = "") {
+  return `/api/library/books/${encodeURIComponent(slug)}${suffix}`;
+}
+
 async function errorFromResponse(response) {
   let payload = null;
   let message = `${response.status} ${response.statusText}`.trim();
@@ -177,6 +181,53 @@ export const api = {
     return request(campaignPath(slug, "/settings"), {
       method: "PATCH",
       body: JSON.stringify(settings),
+    });
+  },
+
+  updateLibrary(slug, payload) {
+    return request(campaignPath(slug, "/library"), {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  library() {
+    return request("/api/library");
+  },
+
+  ingest(file, { bookType, name = "", pages = "" }) {
+    const query = new URLSearchParams({
+      book_type: bookType,
+      filename: file.name,
+    });
+    if (name) query.set("name", name);
+    if (pages) query.set("pages", pages);
+    return request(`/api/library/ingest?${query.toString()}`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/octet-stream",
+        "X-OpenAdventure-Filename": encodeURIComponent(file.name),
+      },
+      body: file,
+    });
+  },
+
+  startTemplate(slug, { model, overwrite = false }) {
+    return request(bookPath(slug, "/template"), {
+      method: "POST",
+      body: JSON.stringify({ model, overwrite }),
+    });
+  },
+
+  libraryJob(jobId) {
+    return request(`/api/library/jobs/${encodeURIComponent(jobId)}`);
+  },
+
+  cancelLibraryJob(jobId) {
+    return request(`/api/library/jobs/${encodeURIComponent(jobId)}/cancel`, {
+      method: "POST",
+      body: "{}",
     });
   },
 };

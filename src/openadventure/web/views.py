@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from openadventure.config import AppConfig
 from openadventure.engine.events import EngineEvent
-from openadventure.engine.session import GameSession, resolve_settings
+from openadventure.engine.session import GameSession, resolve_settings, resolve_utility_settings
 from openadventure.mechanics.clocks import ClockBoard
 from openadventure.mechanics.encounter import Encounter
 from openadventure.mechanics.sheets import Sheet
@@ -64,6 +65,8 @@ def bootstrap_payload(config: AppConfig, workspace: Workspace | None = None) -> 
             for meta in workspace.list_campaigns()
         ],
         "books": [book_metadata(workspace, slug) for slug in workspace.list_books()],
+        "models": model_catalog(),
+        "utility_model": resolve_utility_settings(config).model,
     }
 
 
@@ -74,7 +77,30 @@ def book_metadata(workspace: Workspace, slug: str) -> dict[str, Any]:
     payload = {"slug": slug}
     payload.update({key: manifest[key] for key in _BOOK_MANIFEST_KEYS if key in manifest})
     payload.setdefault("type", workspace.book_type(slug))
+    template = snapshots.load_json(workspace.book_dir(slug) / "templates" / "character.json")
+    payload["template"] = {
+        "ready": template is not None,
+        "fields": len(template.get("fields", [])) if isinstance(template, dict) else 0,
+        "resources": len(template.get("resources", [])) if isinstance(template, dict) else 0,
+    }
     return payload
+
+
+def model_catalog() -> list[dict[str, Any]]:
+    """Models that the web settings and template pickers may offer."""
+
+    return [
+        {
+            "id": model.id,
+            "display_name": model.display_name,
+            "provider": model.provider,
+            "context_window": model.context_window,
+            "max_output": model.max_output,
+            "supports_effort": model.supports_effort,
+            "supports_thinking": model.supports_thinking,
+        }
+        for model in ModelRegistry.load_default().visible
+    ]
 
 
 def campaign_metadata(meta: CampaignMeta) -> dict[str, Any]:
@@ -100,6 +126,7 @@ def campaign_payload(
         settings = session.settings.model_dump(mode="json")
         provider = {
             "name": session.provider_name(),
+            "model": session.settings.model,
             "connected": session.provider is not None,
         }
     else:
@@ -110,14 +137,53 @@ def campaign_payload(
         settings = resolved.model_dump(mode="json")
         provider = {
             "name": models.provider_for(resolved.model),
+            "model": resolved.model,
             "connected": False,
         }
     return {
         "campaign": campaign_metadata(meta),
         "settings": settings,
         "provider": provider,
+        "media": media_payload(session) if session is not None else None,
         "history": public_history(source, mode=meta.mode),
         "state": state_snapshot(source, mode=meta.mode),
+    }
+
+
+def media_payload(session: GameSession) -> dict[str, Any]:
+    """Browser-safe capability, readiness, and per-campaign media settings."""
+
+    capabilities = asdict(session.media_capabilities)
+
+    def backend_status(backend: Any, fallback: str) -> dict[str, Any]:
+        ready = backend is not None and bool(getattr(backend, "ready", True))
+        hint = ""
+        if backend is None:
+            hint = f"No {fallback} backend configured."
+        elif not ready:
+            hint = str(getattr(backend, "configuration_hint", ""))
+        return {"ready": ready, "hint": hint}
+
+    return {
+        "capabilities": capabilities,
+        "backends": {
+            "narration": backend_status(session.tts, "narration"),
+            "sound_effects": backend_status(session.sound_effects, "sound effects"),
+            "music": backend_status(session.music, "music"),
+            "images": backend_status(session.images, "image"),
+        },
+        "enabled": {
+            "narration": session.meta.tts_enabled,
+            "sound_effects": session.meta.sound_effects_enabled,
+            "music": session.meta.music_enabled,
+            "images": session.meta.images_enabled,
+        },
+        "automatic": {
+            "music": session.music_auto(),
+            "images": session.images_auto(),
+        },
+        "music_volume": session.media_host.music_volume(),
+        "music_status": session.music_status_line(),
     }
 
 
@@ -209,6 +275,19 @@ def sanitize_event(
         payload["path"] = (
             image_url(raw_path) if image_url is not None else Path(raw_path.replace("\\", "/")).name
         )
+
+    if mode == "gm" and event.type == "background_task_started":
+        labels = {
+            "image": "Generating an image",
+            "music": "Composing music",
+            "music-stop": "Stopping music",
+            "sfx": "Preparing a sound effect",
+            "tts": "Preparing narration",
+            "compaction": "Updating the story summary",
+        }
+        payload["label"] = labels.get(str(payload.get("kind")), "Working in the background")
+    elif mode == "gm" and event.type == "background_task_finished":
+        payload["message"] = ""
 
     if mode != "gm":
         return payload

@@ -46,7 +46,12 @@ OpenAdventure binds to `http://127.0.0.1:8000` and opens it in your default brow
 the same Python engine, workspace, campaigns, books, characters, and event log as the terminal
 interface. You can create or switch campaigns, stream turns as the GM responds, roll dice,
 undo or retry turns, request a recap, tune campaign settings, and keep the party, scene,
-encounter, and progress clocks visible while you play.
+encounter, and progress clocks visible while you play. The browser also manages the shared
+game library: upload rule sources or adventure modules, follow each ingestion phase, watch the
+template agent research a rulebook round by round, and choose which books a campaign uses.
+Campaign settings include the active AI model plus narration, sound effects, scene images,
+automatic music, and music volume. Generated audio plays in the browser through an ordered
+queue, while scene images appear directly in the transcript.
 
 Use `--port` to choose another localhost port, or `--no-open` if you do not want the browser
 opened automatically:

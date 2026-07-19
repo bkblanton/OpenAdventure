@@ -19,9 +19,14 @@
             <span class="brand-mark" aria-hidden="true">OA</span>
             <span class="brand-name">OpenAdventure</span>
           </a>
-          <button id="new-campaign-button" class="button button-primary" type="button">
-            New campaign
-          </button>
+          <div class="site-header-actions">
+            <button id="library-button" class="button button-quiet" type="button">
+              Game library
+            </button>
+            <button id="new-campaign-button" class="button button-primary" type="button">
+              New campaign
+            </button>
+          </div>
         </header>
 
         <main class="library-main">
@@ -76,6 +81,9 @@
               aria-expanded="false"
             >
               Game state
+            </button>
+            <button id="play-library-button" class="icon-button" type="button">
+              Library
             </button>
             <button id="settings-button" class="icon-button" type="button">
               Settings
@@ -342,6 +350,12 @@
           </select>
         </label>
 
+        <label class="field">
+          <span>Model</span>
+          <select id="settings-model" name="model" aria-describedby="settings-model-note"></select>
+          <small id="settings-model-note">The selected model also chooses its provider.</small>
+        </label>
+
         <div class="settings-grid">
           <label class="field">
             <span>Reasoning effort</span>
@@ -382,6 +396,75 @@
           </span>
         </label>
 
+        <section class="settings-section" aria-labelledby="media-settings-heading">
+          <div class="settings-section-heading">
+            <div>
+              <p class="eyebrow">At the table</p>
+              <h3 id="media-settings-heading">Media</h3>
+            </div>
+            <p>Optional generated atmosphere, presented in this browser.</p>
+          </div>
+          <p id="media-settings-status" class="media-settings-status"></p>
+
+          <div class="media-toggle-grid">
+            <label class="toggle-field">
+              <input id="settings-tts" name="tts_enabled" type="checkbox">
+              <span>
+                <strong>Spoken narration</strong>
+                <small>Read the Game Master's narration aloud.</small>
+              </span>
+            </label>
+            <label class="toggle-field">
+              <input id="settings-sfx" name="sound_effects_enabled" type="checkbox">
+              <span>
+                <strong>Sound effects</strong>
+                <small>Play short effects for important moments.</small>
+              </span>
+            </label>
+            <label class="toggle-field">
+              <input id="settings-images" name="images_enabled" type="checkbox">
+              <span>
+                <strong>Scene images</strong>
+                <small>Allow the GM to create and show illustrations.</small>
+              </span>
+            </label>
+            <label class="toggle-field toggle-dependent">
+              <input id="settings-images-auto" name="images_auto" type="checkbox">
+              <span>
+                <strong>Automatic images</strong>
+                <small>Create a new image when the scene changes.</small>
+              </span>
+            </label>
+            <label class="toggle-field">
+              <input id="settings-music" name="music_enabled" type="checkbox">
+              <span>
+                <strong>Background music</strong>
+                <small>Allow looping campaign ambience.</small>
+              </span>
+            </label>
+            <label class="toggle-field toggle-dependent">
+              <input id="settings-music-auto" name="music_auto" type="checkbox">
+              <span>
+                <strong>Automatic music</strong>
+                <small>Let the GM score scenes as they change.</small>
+              </span>
+            </label>
+          </div>
+
+          <label class="field volume-field">
+            <span>Music volume <output id="settings-music-volume-output">20%</output></span>
+            <input
+              id="settings-music-volume"
+              name="music_volume"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value="0.2"
+            >
+          </label>
+        </section>
+
         <p id="settings-error" class="form-error" role="alert" hidden></p>
         <div class="dialog-actions">
           <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
@@ -390,6 +473,155 @@
           </button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="library-dialog" class="dialog library-dialog">
+      <div class="dialog-card library-dialog-card">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Shared collection</p>
+            <h2>Game library</h2>
+            <p class="dialog-intro">
+              Add rule sources and adventure modules once, then use them at any table.
+            </p>
+          </div>
+          <button class="dialog-close" type="button" data-close-dialog aria-label="Close">&times;</button>
+        </div>
+
+        <section class="library-workspace" aria-labelledby="library-books-heading">
+          <div class="section-heading-row">
+            <div>
+              <p class="eyebrow">On this machine</p>
+              <h3 id="library-books-heading">Books</h3>
+            </div>
+            <button id="show-ingest-button" class="button button-primary" type="button">
+              Add a book
+            </button>
+          </div>
+          <div id="library-books" class="library-book-grid" aria-live="polite"></div>
+        </section>
+
+        <section id="ingest-panel" class="library-panel" aria-labelledby="ingest-heading" hidden>
+          <div class="section-heading-row">
+            <div>
+              <p class="eyebrow">Build the index</p>
+              <h3 id="ingest-heading">Ingest a book</h3>
+            </div>
+            <button id="hide-ingest-button" class="button button-quiet" type="button">Hide</button>
+          </div>
+          <p class="panel-copy">
+            PDFs can take a few minutes. OpenAdventure extracts the text, maps its sections,
+            and builds searchable indexes while you watch.
+          </p>
+          <form id="ingest-form" class="ingest-form">
+            <label id="ingest-drop-zone" class="file-drop" for="ingest-file">
+              <input
+                id="ingest-file"
+                name="file"
+                type="file"
+                accept=".pdf,.md,.markdown,.txt,application/pdf,text/markdown,text/plain"
+                required
+              >
+              <span class="file-drop-mark" aria-hidden="true">+</span>
+              <span>
+                <strong id="ingest-file-label">Choose a PDF, Markdown, or text file</strong>
+                <small>Drop it here or browse your computer.</small>
+              </span>
+            </label>
+            <div class="ingest-fields">
+              <label class="field">
+                <span>Book type</span>
+                <select id="ingest-type" name="book_type">
+                  <option value="source">Rules source</option>
+                  <option value="module">Adventure module</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Library name <small>optional</small></span>
+                <input id="ingest-name" name="name" type="text" maxlength="100" placeholder="Uses the filename">
+              </label>
+              <label class="field">
+                <span>PDF pages <small>optional</small></span>
+                <input id="ingest-pages" name="pages" type="text" inputmode="numeric" placeholder="18-32">
+              </label>
+            </div>
+            <p id="ingest-error" class="form-error" role="alert" hidden></p>
+            <div class="dialog-actions compact-actions">
+              <button id="ingest-submit" class="button button-primary" type="submit">
+                Start ingestion
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section id="library-job" class="library-job" aria-labelledby="library-job-title" hidden>
+          <div class="job-visual" aria-hidden="true">
+            <span class="job-orbit"></span>
+            <span id="job-glyph" class="job-glyph">OA</span>
+          </div>
+          <div class="job-copy">
+            <div class="job-heading-row">
+              <div>
+                <p id="library-job-kicker" class="eyebrow">Preparing the library</p>
+                <h3 id="library-job-title">Starting work</h3>
+              </div>
+              <div class="job-heading-actions">
+                <span id="library-job-state" class="badge">Queued</span>
+                <button id="library-job-cancel" class="button button-quiet" type="button" hidden>
+                  Stop
+                </button>
+              </div>
+            </div>
+            <p id="library-job-message" class="job-message" role="status" aria-live="polite">
+              Setting out the tools.
+            </p>
+            <div id="library-job-progress-wrap" class="job-progress-wrap">
+              <progress id="library-job-progress" max="100"></progress>
+              <span id="library-job-progress-label">Waiting for the first update</span>
+            </div>
+            <ol id="library-job-activity" class="job-activity" aria-label="Job activity"></ol>
+            <p id="library-job-error" class="form-error" role="alert" hidden></p>
+          </div>
+        </section>
+
+        <section id="campaign-library-panel" class="library-panel" aria-labelledby="campaign-library-heading" hidden>
+          <div class="section-heading-row">
+            <div>
+              <p class="eyebrow">Current table</p>
+              <h3 id="campaign-library-heading">Campaign books</h3>
+            </div>
+          </div>
+          <p class="panel-copy">
+            Choose searchable rules and arrange the adventures that belong to this campaign.
+          </p>
+          <form id="campaign-library-form">
+            <div class="campaign-library-grid">
+              <fieldset class="book-picker">
+                <legend>Rules sources</legend>
+                <div id="campaign-source-options" class="book-options"></div>
+                <label class="field inline-select-field">
+                  <span>System source</span>
+                  <select id="campaign-system-source" name="system_source"></select>
+                </label>
+              </fieldset>
+              <fieldset class="book-picker">
+                <legend>Adventure modules</legend>
+                <div id="campaign-module-options" class="book-options"></div>
+                <label class="field inline-select-field">
+                  <span>Now playing</span>
+                  <select id="campaign-active-module" name="active_module"></select>
+                </label>
+              </fieldset>
+            </div>
+            <p id="campaign-library-error" class="form-error" role="alert" hidden></p>
+            <div class="dialog-actions compact-actions">
+              <button id="campaign-library-submit" class="button button-primary" type="submit">
+                Save campaign books
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
     </dialog>
 
     <dialog id="roll-dialog" class="dialog roll-dialog">
@@ -426,6 +658,24 @@
         </div>
       </form>
     </dialog>
+
+    <section id="media-dock" class="media-dock" aria-label="Campaign audio" hidden>
+      <div class="media-dock-pulse" aria-hidden="true"><span></span></div>
+      <div class="media-dock-copy">
+        <span id="media-dock-kind" class="media-dock-kind">Campaign audio</span>
+        <strong id="media-dock-title">Ready to play</strong>
+        <span id="media-dock-status" class="media-dock-status" role="status" aria-live="polite"></span>
+      </div>
+      <button id="media-play-button" class="media-control" type="button" aria-label="Pause audio">
+        Pause
+      </button>
+      <label class="media-volume-control">
+        <span class="sr-only">Music volume</span>
+        <input id="media-dock-volume" type="range" min="0" max="1" step="0.05" value="0.2">
+      </label>
+      <audio id="foreground-audio-player" preload="auto"></audio>
+      <audio id="music-player" preload="auto" loop></audio>
+    </section>
 
     <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
     <div id="global-status" class="sr-only" role="status" aria-live="polite"></div>

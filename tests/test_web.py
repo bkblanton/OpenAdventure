@@ -19,7 +19,8 @@ from openadventure.engine.events import (
     TurnCompleted,
     TurnStarted,
 )
-from openadventure.providers.base import PTextDelta, PTurnDone, Usage
+from openadventure.engine.session import resolve_utility_settings
+from openadventure.providers.base import ModelRegistry, PTextDelta, PTurnDone, Usage
 from openadventure.providers.fake import FakeProvider
 from openadventure.web.app import create_app
 
@@ -30,6 +31,7 @@ async def web_client(config):
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         yield app, client
+    await app.state.library_jobs.close()
     await app.state.sessions.close_all()
 
 
@@ -56,7 +58,13 @@ async def test_bootstrap_create_duplicate_and_unknown_campaign(web_client):
 
     initial = await client.get("/api/bootstrap")
     assert initial.status_code == 200
-    assert initial.json() == {"campaigns": [], "books": []}
+    initial_payload = initial.json()
+    assert initial_payload["campaigns"] == []
+    assert initial_payload["books"] == []
+    assert [model["id"] for model in initial_payload["models"]] == [
+        model.id for model in ModelRegistry.load_default().visible
+    ]
+    assert initial_payload["utility_model"] == resolve_utility_settings(app.state.config).model
 
     created = await client.post(
         "/api/campaigns",
@@ -428,6 +436,92 @@ async def test_provider_failure_does_not_commit_settings(web_client, monkeypatch
     assert handle.session.meta == saved
     assert handle.session.settings == settings_before
     assert handle.session.provider is provider_before
+
+
+async def test_campaign_model_switch_updates_provider_and_persists(web_client, monkeypatch):
+    app, client = web_client
+    campaign = app.state.workspace.create_campaign("Model Switch")
+    handle = await app.state.sessions.get(campaign.load_meta().slug)
+    replacement_provider = object()
+    proposed_models = []
+
+    def provider_for_settings(settings):
+        proposed_models.append(settings.model)
+        return replacement_provider
+
+    monkeypatch.setattr(handle.session, "provider_for_settings", provider_for_settings)
+    response = await client.patch(
+        "/api/campaigns/model-switch/settings",
+        json={"model": "gemini-3.5-flash"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert proposed_models == ["gemini-3.5-flash"]
+    assert payload["settings"]["model"] == "gemini-3.5-flash"
+    assert payload["provider"] == {
+        "name": "gemini",
+        "model": "gemini-3.5-flash",
+        "connected": True,
+    }
+    assert campaign.load_meta().settings["model"] == "gemini-3.5-flash"
+    assert handle.session.settings.model == "gemini-3.5-flash"
+    assert handle.session.provider is replacement_provider
+
+
+async def test_media_settings_persist_and_reload_conditional_tools(web_client, monkeypatch):
+    app, client = web_client
+    campaign = app.state.workspace.create_campaign("Media Settings")
+    handle = await app.state.sessions.get(campaign.load_meta().slug)
+    reloads = 0
+    original_reload = handle.session.reload_tools
+
+    def reload_tools():
+        nonlocal reloads
+        reloads += 1
+        original_reload()
+
+    monkeypatch.setattr(handle.session, "reload_tools", reload_tools)
+    response = await client.patch(
+        "/api/campaigns/media-settings/settings",
+        json={
+            "tts_enabled": True,
+            "sound_effects_enabled": True,
+            "music_enabled": True,
+            "images_enabled": True,
+            "music_auto": False,
+            "images_auto": False,
+            "music_volume": 0.65,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert reloads == 1
+    assert payload["media"]["enabled"] == {
+        "narration": True,
+        "sound_effects": True,
+        "music": True,
+        "images": True,
+    }
+    assert payload["media"]["automatic"] == {"music": False, "images": False}
+    assert payload["media"]["music_volume"] == pytest.approx(0.65)
+    saved = campaign.load_meta()
+    assert saved.tts_enabled is True
+    assert saved.sound_effects_enabled is True
+    assert saved.music_enabled is True
+    assert saved.images_enabled is True
+    assert saved.settings["music_auto"] is False
+    assert saved.settings["images_auto"] is False
+    assert saved.settings["music_volume"] == pytest.approx(0.65)
+
+    invalid = await client.patch(
+        "/api/campaigns/media-settings/settings",
+        json={"music_enabled": False, "music_volume": 1.5},
+    )
+    assert invalid.status_code == 400
+    assert campaign.load_meta() == saved
+    assert reloads == 1
 
 
 async def test_concurrent_turn_is_rejected_when_campaign_lock_is_held(web_client):

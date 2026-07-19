@@ -5,13 +5,15 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import tempfile
 import threading
 import webbrowser
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -26,8 +28,22 @@ from openadventure.config import AppConfig, load_config
 from openadventure.engine.events import EngineEvent, RollResult
 from openadventure.engine.session import resolve_settings
 from openadventure.mechanics.dice import DiceError
-from openadventure.store.workspace import BookTypeMismatch, Campaign, Workspace, slugify
-from openadventure.web.sessions import SessionHandle, SessionManager
+from openadventure.store.workspace import (
+    BookTypeMismatch,
+    Campaign,
+    ModuleRef,
+    Workspace,
+    ensure_book_type,
+    slugify,
+    titleize,
+)
+from openadventure.web.library import (
+    SUPPORTED_SUFFIXES,
+    LibraryJobConflict,
+    LibraryJobError,
+    LibraryJobManager,
+)
+from openadventure.web.sessions import SessionHandle, SessionManager, WebMediaHost
 from openadventure.web.views import (
     bootstrap_payload,
     campaign_payload,
@@ -38,6 +54,9 @@ from openadventure.web.views import (
 
 STATIC_DIR = Path(__file__).with_name("static")
 LOCAL_HOST = "127.0.0.1"
+MAX_UPLOAD_BYTES = 512 * 1024 * 1024
+IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
+AUDIO_SUFFIXES = {".aac", ".flac", ".m4a", ".mp3", ".ogg", ".wav", ".webm"}
 logger = logging.getLogger(__name__)
 
 
@@ -51,10 +70,20 @@ class LocalMutationGuard:
         if scope["type"] == "http" and scope["method"] in ("POST", "PUT", "PATCH", "DELETE"):
             headers = {key.lower(): value for key, value in scope.get("headers", [])}
             content_type = headers.get(b"content-type", b"").decode("latin-1")
-            if content_type.partition(";")[0].strip().lower() != "application/json":
+            is_upload = scope["method"] == "POST" and scope.get("path") == "/api/library/ingest"
+            expected_type = "application/octet-stream" if is_upload else "application/json"
+            if content_type.partition(";")[0].strip().lower() != expected_type:
                 response = JSONResponse(
-                    {"error": "Mutating requests require Content-Type: application/json."},
+                    {"error": f"This request requires Content-Type: {expected_type}."},
                     status_code=415,
+                )
+                await response(scope, receive, send)
+                return
+
+            if is_upload and b"x-openadventure-filename" not in headers:
+                response = JSONResponse(
+                    {"error": "Library uploads require the OpenAdventure filename header."},
+                    status_code=403,
                 )
                 await response(scope, receive, send)
                 return
@@ -105,6 +134,10 @@ def _config(request: Request) -> AppConfig:
     return request.app.state.config
 
 
+def _library_jobs(request: Request) -> LibraryJobManager:
+    return request.app.state.library_jobs
+
+
 async def _session_handle(request: Request) -> SessionHandle | JSONResponse:
     try:
         return await _manager(request).get(request.path_params["slug"])
@@ -112,25 +145,48 @@ async def _session_handle(request: Request) -> SessionHandle | JSONResponse:
         return _json_error(str(exc), 404)
 
 
-def _media_url(campaign: Campaign, slug: str, raw_path: str) -> str | None:
-    """Turn a generated-image path into a URL without exposing its disk path."""
+def _media_url(campaign: Campaign, slug: str, kind: str, raw_path: str) -> str | None:
+    """Turn a campaign media path into a URL without exposing its disk path."""
+    roots = {"images": campaign.images_dir, "music": campaign.music_dir}
+    root = roots.get(kind)
+    if root is None:
+        return None
     try:
         target = Path(raw_path).resolve(strict=True)
-        relative = target.relative_to(campaign.images_dir.resolve())
+        relative = target.relative_to(root.resolve())
     except FileNotFoundError, OSError, ValueError:
         return None
     encoded_slug = quote(slug, safe="")
     encoded_path = quote(relative.as_posix(), safe="/")
-    return f"/api/campaigns/{encoded_slug}/media/images/{encoded_path}"
+    return f"/api/campaigns/{encoded_slug}/media/{kind}/{encoded_path}"
 
 
 def _event_payload(event: EngineEvent, handle: SessionHandle) -> dict[str, Any] | None:
     session = handle.session
+    if isinstance(session.media_host, WebMediaHost) and event.type in (
+        "music_started",
+        "music_stopped",
+    ):
+        # The host carries the validated playable URL. The engine event contains
+        # only the generation prompt, so sending both would duplicate the cue.
+        return None
     return sanitize_event(
         event,
         mode=session.meta.mode,
-        image_url=lambda path: _media_url(session.campaign, session.meta.slug, path),
+        image_url=lambda path: _media_url(session.campaign, session.meta.slug, "images", path),
     )
+
+
+def _web_media_payloads(handle: SessionHandle) -> list[dict[str, Any]]:
+    host = handle.session.media_host
+    if not isinstance(host, WebMediaHost):
+        return []
+    payloads = host.drain_events()
+    if handle.session.meta.mode == "gm":
+        for payload in payloads:
+            if payload.get("type") == "music_started":
+                payload["mood"] = ""
+    return payloads
 
 
 def _ndjson(data: dict[str, Any]) -> bytes:
@@ -147,6 +203,130 @@ async def health(request: Request) -> Response:
 
 async def bootstrap(request: Request) -> Response:
     return JSONResponse(bootstrap_payload(_config(request), _workspace(request)))
+
+
+def _parse_pages(value: str | None) -> tuple[int, int] | None:
+    if value is None or not value.strip():
+        return None
+    start_text, separator, end_text = value.strip().partition("-")
+    try:
+        start = int(start_text)
+        end = int(end_text) if separator else start
+    except ValueError as exc:
+        raise ValueError("Page range must look like 18-32.") from exc
+    if start < 1 or end < start:
+        raise ValueError("Page range must start at 1 or later and end after it starts.")
+    return start, end
+
+
+async def library_overview(request: Request) -> Response:
+    bootstrap_data = bootstrap_payload(_config(request), _workspace(request))
+    return JSONResponse(
+        {
+            "books": bootstrap_data["books"],
+            "models": bootstrap_data["models"],
+            "utility_model": bootstrap_data["utility_model"],
+            "jobs": _library_jobs(request).snapshots(),
+        }
+    )
+
+
+async def start_ingest(request: Request) -> Response:
+    temporary: Path | None = None
+    handed_off = False
+    try:
+        query = request.query_params
+        book_type = query.get("book_type", "")
+        name = query.get("name", "")
+        if len(name) > 120:
+            raise LibraryJobError("Library names must be 120 characters or fewer.")
+        encoded_filename = request.headers.get("x-openadventure-filename") or query.get(
+            "filename", ""
+        )
+        filename = unquote(encoded_filename)
+        if not filename or "\x00" in filename:
+            raise LibraryJobError("Choose a document to upload.")
+        filename = Path(filename).name
+        suffix = Path(filename).suffix.casefold()
+        if suffix not in SUPPORTED_SUFFIXES:
+            supported = ", ".join(sorted(SUPPORTED_SUFFIXES))
+            raise LibraryJobError(f"Choose a supported document: {supported}.")
+        pages = _parse_pages(query.get("pages"))
+
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                declared_size = int(content_length)
+            except ValueError as exc:
+                raise LibraryJobError("Upload size could not be read.") from exc
+            if declared_size > MAX_UPLOAD_BYTES:
+                raise LibraryJobError("Documents must be 512 MB or smaller.")
+
+        descriptor, raw_path = tempfile.mkstemp(prefix="openadventure-upload-", suffix=suffix)
+        temporary = Path(raw_path)
+        size = 0
+        with os.fdopen(descriptor, "wb") as destination:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise LibraryJobError("Documents must be 512 MB or smaller.")
+                destination.write(chunk)
+        if size == 0:
+            raise LibraryJobError("The uploaded document is empty.")
+
+        job = await _library_jobs(request).start_ingest(
+            temporary,
+            original_name=filename,
+            name=name,
+            book_type=book_type,
+            pages=pages,
+        )
+        handed_off = True
+        return JSONResponse(job.snapshot(), status_code=202)
+    except LibraryJobConflict as exc:
+        return _json_error(str(exc), 409)
+    except (LibraryJobError, ValueError) as exc:
+        return _json_error(str(exc))
+    finally:
+        if temporary is not None and not handed_off:
+            temporary.unlink(missing_ok=True)
+
+
+async def get_library_job(request: Request) -> Response:
+    try:
+        job = _library_jobs(request).get(request.path_params["job_id"])
+    except FileNotFoundError as exc:
+        return _json_error(str(exc), 404)
+    return JSONResponse(job.snapshot())
+
+
+async def cancel_library_job(request: Request) -> Response:
+    try:
+        cancelled = await _library_jobs(request).cancel(request.path_params["job_id"])
+    except FileNotFoundError as exc:
+        return _json_error(str(exc), 404)
+    return JSONResponse({"cancelled": cancelled})
+
+
+async def start_template(request: Request) -> Response:
+    try:
+        body = await _request_json(request)
+        model = body.get("model")
+        if model is not None and (not isinstance(model, str) or not model.strip()):
+            raise LibraryJobError("Model must be non-empty text.")
+        overwrite = body.get("overwrite", False)
+        if not isinstance(overwrite, bool):
+            raise LibraryJobError("overwrite must be true or false.")
+        job = await _library_jobs(request).start_template(
+            request.path_params["book_slug"],
+            model=model.strip() if isinstance(model, str) else None,
+            overwrite=overwrite,
+        )
+        return JSONResponse(job.snapshot(), status_code=202)
+    except LibraryJobConflict as exc:
+        return _json_error(str(exc), 409)
+    except LibraryJobError as exc:
+        return _json_error(str(exc))
 
 
 def _string_list(value: Any, field: str) -> list[str]:
@@ -202,6 +382,83 @@ async def get_state(request: Request) -> Response:
     return JSONResponse({"state": state_snapshot(handle.session)})
 
 
+def _library_slugs(value: Any, field: str) -> list[str]:
+    names = _string_list(value, field)
+    result: list[str] = []
+    for name in names:
+        slug = slugify(name)
+        if slug not in result:
+            result.append(slug)
+    return result
+
+
+async def update_campaign_library(request: Request) -> Response:
+    handle = await _session_handle(request)
+    if isinstance(handle, JSONResponse):
+        return handle
+    try:
+        body = await _request_json(request)
+        allowed = {"sources", "system_source", "modules", "active_module"}
+        unknown = set(body) - allowed
+        if unknown:
+            raise ValueError(f"Unknown library setting(s): {', '.join(sorted(unknown))}.")
+        sources = _library_slugs(body.get("sources", handle.session.meta.sources), "sources")
+        modules = _library_slugs(
+            body.get("modules", [module.slug for module in handle.session.meta.modules]),
+            "modules",
+        )
+        available = set(_workspace(request).list_books())
+        missing = [slug for slug in [*sources, *modules] if slug not in available]
+        if missing:
+            raise ValueError(f"Ingest these books first: {', '.join(missing)}.")
+        for source in sources:
+            ensure_book_type(_workspace(request), source, "source")
+        for module in modules:
+            ensure_book_type(_workspace(request), module, "module")
+
+        raw_system = body.get("system_source", handle.session.meta.system_source)
+        system_source = slugify(raw_system) if isinstance(raw_system, str) and raw_system else None
+        if system_source is not None and system_source not in sources:
+            raise ValueError("The system source must be one of the attached rule sources.")
+        raw_active = body.get("active_module", handle.session.meta.active_module)
+        active_module = slugify(raw_active) if isinstance(raw_active, str) and raw_active else None
+        if active_module is not None and active_module not in modules:
+            raise ValueError("The active module must be one of the attached modules.")
+    except (BookTypeMismatch, ValueError) as exc:
+        return _json_error(str(exc))
+
+    if handle.lock.locked():
+        return _json_error("The campaign library cannot change during a turn.", 409)
+    async with handle.lock:
+        existing = {module.slug: module for module in handle.session.meta.modules}
+        module_refs: list[ModuleRef] = []
+        for index, slug in enumerate(modules):
+            reference = existing.get(slug)
+            if reference is None:
+                reference = ModuleRef(slug=slug, title=titleize(slug))
+            else:
+                reference = reference.model_copy(deep=True)
+            reference.order = index
+            module_refs.append(reference)
+        selected_active = active_module or (modules[0] if modules else None)
+        for reference in module_refs:
+            if reference.slug == selected_active and reference.status == "pending":
+                reference.status = "active"
+
+        saved_meta = handle.session.meta.model_copy(deep=True)
+        saved_meta.sources = sources
+        saved_meta.system_source = system_source or (sources[0] if sources else None)
+        saved_meta.modules = module_refs
+        saved_meta.active_module = selected_active
+        handle.session.campaign.save_meta(saved_meta)
+        handle.session.meta.sources = saved_meta.sources
+        handle.session.meta.system_source = saved_meta.system_source
+        handle.session.meta.modules = saved_meta.modules
+        handle.session.meta.active_module = saved_meta.active_module
+        handle.session.reload_tools()
+    return JSONResponse(campaign_payload(handle.session))
+
+
 async def poll_events(request: Request) -> Response:
     handle = await _session_handle(request)
     if isinstance(handle, JSONResponse):
@@ -211,6 +468,7 @@ async def poll_events(request: Request) -> Response:
         for event in handle.session.background.drain()
         if (payload := _event_payload(event, handle)) is not None
     ]
+    payloads.extend(_web_media_payloads(handle))
     response: dict[str, Any] = {"events": payloads}
     if payloads:
         response["state"] = state_snapshot(handle.session)
@@ -222,10 +480,17 @@ async def _stream_events(
     source: Callable[[], AsyncIterator[EngineEvent]],
     *,
     before: Callable[[], dict[str, Any] | None] | None = None,
+    on_start: Callable[[], Any] | None = None,
 ) -> StreamingResponse | JSONResponse:
     if handle.lock.locked():
         return _json_error("This campaign already has a turn in progress.", 409)
     await handle.lock.acquire()
+    try:
+        if on_start is not None:
+            on_start()
+    except Exception:
+        handle.lock.release()
+        raise
 
     async def generate() -> AsyncIterator[bytes]:
         queue: asyncio.Queue[EngineEvent | object] = asyncio.Queue()
@@ -250,6 +515,7 @@ async def _stream_events(
                 payload = _event_payload(background_event, handle)
                 if payload is not None:
                     initial_payloads.append(payload)
+            initial_payloads.extend(_web_media_payloads(handle))
             if before is not None:
                 payload = before()
                 if payload is not None:
@@ -327,15 +593,16 @@ async def run_turn(request: Request) -> Response:
     except ValueError as exc:
         return _json_error(str(exc))
 
-    def source() -> AsyncIterator[EngineEvent]:
-        return handle.session.handle_input(
+    async def source() -> AsyncIterator[EngineEvent]:
+        async for engine_event in handle.session.handle_input(
             text.strip(),
             steer=kind == "steer",
             ephemeral=kind == "aside" or (kind == "steer" and quiet),
             read_only=kind == "aside",
-        )
+        ):
+            yield engine_event
 
-    return await _stream_events(handle, source)
+    return await _stream_events(handle, source, on_start=handle.session.interrupt_narration)
 
 
 async def _locked_json_action(
@@ -390,7 +657,12 @@ async def campaign_action(request: Request) -> Response:
             async for event in handle.session.handle_input(retry.text):
                 yield event
 
-        return await _stream_events(handle, retry_source, before=before_retry)
+        return await _stream_events(
+            handle,
+            retry_source,
+            before=before_retry,
+            on_start=handle.session.interrupt_narration,
+        )
 
     if action == "compact":
         return await _stream_events(handle, handle.session.compact_now)
@@ -476,8 +748,17 @@ async def update_settings(request: Request) -> Response:
         body = await _request_json(request)
     except ValueError as exc:
         return _json_error(str(exc))
-    allowed = {"model", "effort", "thinking", "verbosity", "context_budget"}
-    unknown = set(body) - allowed - {"mode"}
+    generation_keys = {"model", "effort", "thinking", "verbosity", "context_budget"}
+    media_bool_keys = {
+        "tts_enabled",
+        "sound_effects_enabled",
+        "music_enabled",
+        "images_enabled",
+        "music_auto",
+        "images_auto",
+    }
+    allowed = generation_keys | media_bool_keys | {"mode", "music_volume"}
+    unknown = set(body) - allowed
     if unknown:
         return _json_error(f"Unknown setting(s): {', '.join(sorted(unknown))}.")
     if handle.lock.locked():
@@ -498,9 +779,23 @@ async def update_settings(request: Request) -> Response:
             for key in ("model", "effort", "verbosity"):
                 if key in body and (not isinstance(body[key], str) or not body[key].strip()):
                     raise ValueError(f"{key} must be non-empty text")
+            for key in media_bool_keys:
+                if key in body and not isinstance(body[key], bool):
+                    raise ValueError(f"{key} must be true or false")
+            if "music_volume" in body and (
+                not isinstance(body["music_volume"], int | float)
+                or isinstance(body["music_volume"], bool)
+                or not 0 <= float(body["music_volume"]) <= 1
+            ):
+                raise ValueError("music_volume must be between 0 and 1")
 
             proposed = dict(handle.session.meta.settings)
-            proposed.update({key: body[key] for key in allowed if key in body})
+            proposed.update({key: body[key] for key in generation_keys if key in body})
+            proposed.update(
+                {key: body[key] for key in ("music_auto", "images_auto") if key in body}
+            )
+            if "music_volume" in body:
+                proposed["music_volume"] = float(body["music_volume"])
             settings = resolve_settings(proposed, handle.session.config, handle.session.models)
             provider_before = handle.session.provider_name()
             provider_after = handle.session.models.provider_for(settings.model)
@@ -516,11 +811,40 @@ async def update_settings(request: Request) -> Response:
             saved_meta = handle.session.meta.model_copy(deep=True)
             saved_meta.mode = mode
             saved_meta.settings = proposed
+            for key in (
+                "tts_enabled",
+                "sound_effects_enabled",
+                "music_enabled",
+                "images_enabled",
+            ):
+                if key in body:
+                    setattr(saved_meta, key, body[key])
+            reload_tools = any(
+                getattr(saved_meta, key) != getattr(handle.session.meta, key)
+                for key in (
+                    "mode",
+                    "tts_enabled",
+                    "sound_effects_enabled",
+                    "music_enabled",
+                    "images_enabled",
+                )
+            )
+            stop_music = handle.session.meta.music_enabled and not saved_meta.music_enabled
             handle.session.campaign.save_meta(saved_meta)
             handle.session.meta.mode = mode
             handle.session.meta.settings = proposed
+            handle.session.meta.tts_enabled = saved_meta.tts_enabled
+            handle.session.meta.sound_effects_enabled = saved_meta.sound_effects_enabled
+            handle.session.meta.music_enabled = saved_meta.music_enabled
+            handle.session.meta.images_enabled = saved_meta.images_enabled
             handle.session.settings = settings
             handle.session.provider = provider
+            if "music_volume" in body:
+                handle.session.media_host.set_music_volume(float(body["music_volume"]))
+            if stop_music:
+                handle.session.stop_music()
+            if reload_tools:
+                handle.session.reload_tools()
         except (TypeError, ValueError) as exc:
             return _json_error(str(exc))
     return JSONResponse(campaign_payload(handle.session))
@@ -535,18 +859,40 @@ async def campaign_media(request: Request) -> Response:
     except FileNotFoundError as exc:
         return _json_error(str(exc), 404)
     kind = request.path_params["kind"]
-    roots = {"images": campaign.images_dir, "music": campaign.music_dir}
-    root = roots.get(kind)
-    if root is None:
-        return _json_error("Unknown media type.", 404)
-    try:
-        target = (root / request.path_params["media_path"]).resolve(strict=True)
-        target.relative_to(root.resolve())
-    except FileNotFoundError, OSError, ValueError:
+    media_path = request.path_params["media_path"]
+    target: Path | None = None
+    allowed_suffixes: set[str]
+    if kind == "audio":
+        handle = await _session_handle(request)
+        if isinstance(handle, JSONResponse):
+            return handle
+        host = handle.session.media_host
+        if isinstance(host, WebMediaHost):
+            target = host.resolve_audio(media_path)
+        allowed_suffixes = AUDIO_SUFFIXES
+    else:
+        roots = {"images": campaign.images_dir, "music": campaign.music_dir}
+        root = roots.get(kind)
+        if root is None:
+            return _json_error("Unknown media type.", 404)
+        try:
+            target = (root / media_path).resolve(strict=True)
+            target.relative_to(root.resolve())
+        except FileNotFoundError, OSError, ValueError:
+            return _json_error("Media file not found.", 404)
+        allowed_suffixes = IMAGE_SUFFIXES if kind == "images" else AUDIO_SUFFIXES
+    if target is None or not target.is_file():
         return _json_error("Media file not found.", 404)
-    if not target.is_file():
-        return _json_error("Media file not found.", 404)
-    return FileResponse(target)
+    if target.suffix.casefold() not in allowed_suffixes:
+        return _json_error("Media file type is not allowed.", 415)
+    return FileResponse(
+        target,
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "Cross-Origin-Resource-Policy": "same-origin",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 def create_app(config: AppConfig | None = None) -> Starlette:
@@ -554,16 +900,31 @@ def create_app(config: AppConfig | None = None) -> Starlette:
     workspace = Workspace(config.workspace_dir)
     workspace.ensure()
     sessions = SessionManager(config, workspace)
+    library_jobs = LibraryJobManager(config, workspace, sessions)
 
     @asynccontextmanager
     async def lifespan(app: Starlette):
         yield
+        await library_jobs.close()
         await sessions.close_all()
 
     routes = [
         Route("/", homepage),
         Route("/api/health", health),
         Route("/api/bootstrap", bootstrap),
+        Route("/api/library", library_overview),
+        Route("/api/library/ingest", start_ingest, methods=["POST"]),
+        Route("/api/library/jobs/{job_id:str}", get_library_job),
+        Route(
+            "/api/library/jobs/{job_id:str}/cancel",
+            cancel_library_job,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/library/books/{book_slug:str}/template",
+            start_template,
+            methods=["POST"],
+        ),
         Route("/api/campaigns", create_campaign, methods=["POST"]),
         Route("/api/campaigns/{slug:str}", get_campaign),
         Route("/api/campaigns/{slug:str}/state", get_state),
@@ -577,6 +938,11 @@ def create_app(config: AppConfig | None = None) -> Starlette:
         Route(
             "/api/campaigns/{slug:str}/settings",
             update_settings,
+            methods=["PATCH"],
+        ),
+        Route(
+            "/api/campaigns/{slug:str}/library",
+            update_campaign_library,
             methods=["PATCH"],
         ),
         Route(
@@ -597,6 +963,7 @@ def create_app(config: AppConfig | None = None) -> Starlette:
     app.state.config = config
     app.state.workspace = workspace
     app.state.sessions = sessions
+    app.state.library_jobs = library_jobs
     return app
 
 
