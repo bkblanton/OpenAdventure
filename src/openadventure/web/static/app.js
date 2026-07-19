@@ -662,6 +662,11 @@ function syncMediaPayload(media) {
   playBrowserAudio(dom.musicPlayer, "music", title, "Looping");
 }
 
+function restoreCampaignImages(media) {
+  const images = Array.isArray(media?.restored_images) ? media.restored_images : [];
+  for (const image of images) renderImage(image);
+}
+
 function renderEngineError(event) {
   const card = systemMessage(event.message || "The GM encountered an error.", {
     error: true,
@@ -834,7 +839,10 @@ function applyPayload(payload, { renderTranscript = true } = {}) {
   updateCampaignHeader();
   updateConnection();
   applyState(normalized.state);
-  if (renderTranscript) renderHistory(normalized.history);
+  if (renderTranscript) {
+    renderHistory(normalized.history);
+    restoreCampaignImages(store.media);
+  }
   queueCredentialPrompt();
 }
 

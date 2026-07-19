@@ -24,6 +24,7 @@ from openadventure.engine.events import (
 from openadventure.engine.session import resolve_utility_settings
 from openadventure.providers.base import ModelRegistry, PTextDelta, PTurnDone, Usage
 from openadventure.providers.fake import FakeProvider
+from openadventure.store.eventlog import EventLog
 from openadventure.web.app import create_app
 
 
@@ -524,6 +525,52 @@ async def test_media_settings_persist_and_reload_conditional_tools(web_client, m
     assert invalid.status_code == 400
     assert campaign.load_meta() == saved
     assert reloads == 1
+
+
+async def test_campaign_payload_restores_persisted_images_and_music(web_client):
+    app, client = web_client
+    campaign = app.state.workspace.create_campaign("Restored Media")
+    meta = campaign.load_meta()
+    meta.mode = "assistant"
+    meta.music_enabled = True
+    campaign.save_meta(meta)
+
+    campaign.images_dir.mkdir(parents=True)
+    image = campaign.images_dir / "haunted-foyer.png"
+    image.write_bytes(b"image")
+    campaign.music_dir.mkdir(parents=True)
+    track = campaign.music_dir / "dreadful-strings.mp3"
+    track.write_bytes(b"music")
+    log = EventLog(campaign.log_path)
+    log.append(
+        "media",
+        {"kind": "image", "path": str(image), "caption": "The haunted foyer"},
+    )
+    log.append(
+        "media",
+        {
+            "kind": "music",
+            "path": str(track),
+            "prompt": "dreadful strings",
+            "length_seconds": 30,
+        },
+    )
+
+    response = await client.get("/api/campaigns/restored-media")
+
+    assert response.status_code == 200
+    media = response.json()["media"]
+    assert media["restored_images"] == [
+        {
+            "path": "/api/campaigns/restored-media/media/images/haunted-foyer.png",
+            "caption": "The haunted foyer",
+        }
+    ]
+    assert media["now_playing"] == {
+        "track": "/api/campaigns/restored-media/media/music/dreadful-strings.mp3",
+        "mood": "dreadful strings",
+        "length_seconds": 30,
+    }
 
 
 def test_save_local_api_key_updates_only_the_local_env_file(tmp_path, monkeypatch):
