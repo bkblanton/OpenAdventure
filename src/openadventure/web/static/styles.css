@@ -1762,6 +1762,14 @@ a:focus-visible {
   color: var(--amber);
 }
 
+.credential-button {
+  margin: -4px 0 13px;
+}
+
+.credential-dialog-card {
+  width: min(100%, 510px);
+}
+
 .media-toggle-grid .toggle-field {
   height: 100%;
   margin: 0;

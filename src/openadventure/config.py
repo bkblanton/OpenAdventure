@@ -11,7 +11,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 from pydantic import BaseModel, Field
 
 DEFAULT_WORKSPACE = "workspace"
@@ -67,6 +67,33 @@ def resolve_api_key(config: AppConfig, provider: str) -> str | None:
         if value:
             return value
     return config.api_key
+
+
+def save_local_api_key(name: str, value: str, *, env_path: Path | None = None) -> None:
+    """Save one approved API key to the local ``.env`` file and live process.
+
+    The browser UI uses this instead of returning a submitted secret to the
+    client. It intentionally supports only the providers OpenAdventure knows,
+    so a localhost request cannot write arbitrary environment variables.
+    """
+
+    allowed = {
+        "ANTHROPIC_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "OPENAI_API_KEY",
+        "ELEVENLABS_API_KEY",
+    }
+    if name not in allowed:
+        raise ValueError("Unknown API key service.")
+    clean_value = value.strip()
+    if not clean_value or len(clean_value) > 4096 or "\x00" in clean_value:
+        raise ValueError("Enter a valid API key.")
+    if "\r" in clean_value or "\n" in clean_value:
+        raise ValueError("API keys cannot contain line breaks.")
+    target = env_path or Path.cwd() / ".env"
+    set_key(target, name, clean_value, quote_mode="auto")
+    os.environ[name] = clean_value
 
 
 DEFAULT_CONFIG_TOML = """\

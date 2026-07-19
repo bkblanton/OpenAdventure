@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections.abc import AsyncIterator, Callable
 
 import httpx
 import pytest
 
 from openadventure.cli.main import _cmd_web, build_parser
+from openadventure.config import save_local_api_key
 from openadventure.engine.events import (
     DebugChatter,
     EngineEvent,
@@ -522,6 +524,88 @@ async def test_media_settings_persist_and_reload_conditional_tools(web_client, m
     assert invalid.status_code == 400
     assert campaign.load_meta() == saved
     assert reloads == 1
+
+
+def test_save_local_api_key_updates_only_the_local_env_file(tmp_path, monkeypatch):
+    env_path = tmp_path / ".env"
+    monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+
+    save_local_api_key("ELEVENLABS_API_KEY", "test-audio-key", env_path=env_path)
+
+    assert os.environ["ELEVENLABS_API_KEY"] == "test-audio-key"
+    assert "ELEVENLABS_API_KEY" in env_path.read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match="line breaks"):
+        save_local_api_key("ELEVENLABS_API_KEY", "bad\nkey", env_path=env_path)
+    with pytest.raises(ValueError, match="Unknown"):
+        save_local_api_key("UNRELATED_SECRET", "not-allowed", env_path=env_path)
+
+
+async def test_web_credential_setup_connects_local_services_without_echoing_keys(
+    web_client, monkeypatch
+):
+    app, client = web_client
+    campaign = app.state.workspace.create_campaign("Credential Setup")
+    handle = await app.state.sessions.get(campaign.load_meta().slug)
+    saved: list[tuple[str, str]] = []
+    reloaded = 0
+
+    def save_key(name: str, value: str) -> None:
+        saved.append((name, value))
+        monkeypatch.setenv(name, value)
+
+    def connect_provider() -> bool:
+        handle.session.provider = object()
+        return True
+
+    def reload_tools() -> None:
+        nonlocal reloaded
+        reloaded += 1
+
+    monkeypatch.setattr("openadventure.web.app.save_local_api_key", save_key)
+    monkeypatch.setattr(handle.session, "connect_provider", connect_provider)
+    monkeypatch.setattr(handle.session, "reload_tools", reload_tools)
+
+    secret = "test-main-model-key"
+    response = await client.post(
+        "/api/campaigns/credential-setup/credentials",
+        json={"service": "anthropic", "api_key": secret},
+    )
+
+    assert response.status_code == 200
+    assert saved == [("ANTHROPIC_API_KEY", secret)]
+    assert reloaded == 1
+    assert response.json()["provider"]["connected"] is True
+    assert secret not in response.text
+    assert "api_key" not in response.json()
+
+    audio_secret = "test-elevenlabs-key"
+    audio = await client.post(
+        "/api/campaigns/credential-setup/credentials",
+        json={"service": "elevenlabs", "api_key": audio_secret},
+    )
+    assert audio.status_code == 200
+    assert saved[-1] == ("ELEVENLABS_API_KEY", audio_secret)
+    assert audio_secret not in audio.text
+
+    image_secret = "test-google-image-key"
+    image = await client.post(
+        "/api/campaigns/credential-setup/credentials",
+        json={"service": "google", "api_key": image_secret},
+    )
+    assert image.status_code == 200
+    assert saved[-1] == ("GOOGLE_API_KEY", image_secret)
+    assert image_secret not in image.text
+
+    invalid = await client.post(
+        "/api/campaigns/credential-setup/credentials",
+        json={"service": "unknown", "api_key": "not-saved"},
+    )
+    assert invalid.status_code == 400
+    assert saved == [
+        ("ANTHROPIC_API_KEY", secret),
+        ("ELEVENLABS_API_KEY", audio_secret),
+        ("GOOGLE_API_KEY", image_secret),
+    ]
 
 
 async def test_concurrent_turn_is_rejected_when_campaign_lock_is_held(web_client):

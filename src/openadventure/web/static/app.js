@@ -76,9 +76,19 @@ const dom = {
   settingsMusicVolume: $("settings-music-volume"),
   settingsMusicVolumeOutput: $("settings-music-volume-output"),
   mediaSettingsStatus: $("media-settings-status"),
+  settingsCredentialsButton: $("settings-credentials-button"),
   settingsConnection: $("settings-connection"),
   settingsError: $("settings-error"),
   settingsSubmit: $("settings-submit"),
+  credentialDialog: $("credential-dialog"),
+  credentialForm: $("credential-form"),
+  credentialTitle: $("credential-title"),
+  credentialIntro: $("credential-intro"),
+  credentialLabel: $("credential-label"),
+  credentialKey: $("credential-key"),
+  credentialNote: $("credential-note"),
+  credentialError: $("credential-error"),
+  credentialSubmit: $("credential-submit"),
   libraryDialog: $("library-dialog"),
   libraryBooks: $("library-books"),
   showIngestButton: $("show-ingest-button"),
@@ -167,6 +177,8 @@ const store = {
   libraryJobTimer: null,
   libraryJobActivity: [],
   targetedTemplate: null,
+  credentialRequest: null,
+  dismissedCredentials: new Set(),
   audio: {
     active: null,
     currentClip: null,
@@ -814,6 +826,7 @@ function applyPayload(payload, { renderTranscript = true } = {}) {
   updateConnection();
   applyState(normalized.state);
   if (renderTranscript) renderHistory(normalized.history);
+  queueCredentialPrompt();
 }
 
 function applyState(state) {
@@ -869,6 +882,105 @@ function connectionInfo() {
   };
 }
 
+const credentialServices = {
+  anthropic: {
+    title: "Connect Anthropic",
+    label: "Anthropic API key",
+    intro: "Your selected model uses Anthropic. Add its API key to start the Game Master.",
+  },
+  gemini: {
+    title: "Connect Google AI",
+    label: "Google AI API key",
+    intro: "Your selected Gemini model needs a Google AI API key before the Game Master can respond.",
+  },
+  openai: {
+    title: "Connect OpenAI",
+    label: "OpenAI API key",
+    intro: "Your selected model uses OpenAI. Add its API key to start the Game Master.",
+  },
+  google: {
+    title: "Enable scene images",
+    label: "Google AI API key",
+    intro: "Scene images use Google AI. Add a key to generate illustrations at this table.",
+  },
+  elevenlabs: {
+    title: "Enable browser audio",
+    label: "ElevenLabs API key",
+    intro: "Narration, sound effects, and music use ElevenLabs. Add a key to generate audio at this table.",
+  },
+};
+
+function credentialServiceForProvider(name) {
+  const value = String(name || "").toLowerCase();
+  if (value.includes("gemini") || value.includes("google")) return "gemini";
+  if (value.includes("openai") || value.includes("gpt")) return "openai";
+  if (value.includes("anthropic") || value.includes("claude")) return "anthropic";
+  return null;
+}
+
+function backendNeedsApiKey(backend) {
+  return Boolean(
+    backend &&
+      backend.ready === false &&
+      /(?:API_KEY|api key|google_api_key|elevenlabs_api_key)/i.test(String(backend.hint || "")),
+  );
+}
+
+function missingCredentialRequests() {
+  if (!store.campaign?.slug) return [];
+  const requested = [];
+  const connection = connectionInfo();
+  if (connection.connected === false) {
+    const service = credentialServiceForProvider(connection.name);
+    if (service) requested.push(service);
+  }
+
+  const enabled = store.media?.enabled || {};
+  const backends = store.media?.backends || {};
+  if (enabled.images && backendNeedsApiKey(backends.images)) requested.push("google");
+  const audioNeedsKey =
+    (enabled.narration && backendNeedsApiKey(backends.narration)) ||
+    (enabled.sound_effects && backendNeedsApiKey(backends.sound_effects)) ||
+    (enabled.music && backendNeedsApiKey(backends.music));
+  if (audioNeedsKey) requested.push("elevenlabs");
+  return [...new Set(requested)];
+}
+
+function credentialDismissalKey(service) {
+  return `${store.slug || "local"}:${service}`;
+}
+
+function openCredentialPrompt(service, { force = false } = {}) {
+  const details = credentialServices[service];
+  if (!details || !store.slug || dom.credentialDialog.open) return false;
+  const dismissalKey = credentialDismissalKey(service);
+  if (!force && store.dismissedCredentials.has(dismissalKey)) return false;
+  store.credentialRequest = service;
+  dom.credentialForm.reset();
+  dom.credentialTitle.textContent = details.title;
+  dom.credentialLabel.textContent = details.label;
+  dom.credentialIntro.textContent = details.intro;
+  dom.credentialNote.textContent = "Saved only to this computer's local .env file and never returned by OpenAdventure.";
+  dom.credentialError.hidden = true;
+  dom.credentialSubmit.disabled = false;
+  dom.credentialSubmit.textContent = "Save API key";
+  dom.credentialDialog.showModal();
+  window.setTimeout(() => dom.credentialKey.focus(), 0);
+  return true;
+}
+
+function promptForMissingCredentials({ force = false } = {}) {
+  if (store.credentialRequest || dom.credentialDialog.open) return;
+  const service = missingCredentialRequests().find(
+    (item) => force || !store.dismissedCredentials.has(credentialDismissalKey(item)),
+  );
+  if (service) openCredentialPrompt(service, { force });
+}
+
+function queueCredentialPrompt() {
+  window.setTimeout(() => promptForMissingCredentials(), 0);
+}
+
 function updateConnection() {
   const connection = connectionInfo();
   dom.connectionChip.classList.remove("is-ready", "is-error", "is-working");
@@ -879,7 +991,7 @@ function updateConnection() {
     dom.connectionNoticeTitle.textContent = `${connection.name} is not connected`;
     dom.connectionNoticeMessage.textContent =
       connection.message ||
-      `Set ${providerEnvironmentName(connection.name)} in the server environment, then restart OpenAdventure.`;
+      `Add your ${providerEnvironmentName(connection.name)} in campaign settings to connect it now.`;
   } else {
     dom.connectionChip.classList.add(connection.connected === true ? "is-ready" : "is-working");
     dom.connectionLabel.textContent = connection.model || connection.name || "Connected";
@@ -1799,6 +1911,10 @@ function syncMediaSettingsControls() {
     ? `Needs server configuration: ${unavailable.join(", ")}.`
     : "Available media backends are ready.";
   dom.mediaSettingsStatus.classList.toggle("is-warning", unavailable.length > 0);
+  const missing = missingCredentialRequests();
+  dom.settingsCredentialsButton.hidden = missing.length === 0;
+  dom.settingsCredentialsButton.textContent =
+    missing.length > 1 ? "Add missing API keys" : "Add missing API key";
 }
 
 function openSettings() {
@@ -2081,6 +2197,49 @@ for (const input of [dom.settingsImages, dom.settingsMusic, dom.settingsMusicVol
 }
 
 dom.settingsModel.addEventListener("change", syncModelSettingsControls);
+
+dom.settingsCredentialsButton.addEventListener("click", () => {
+  for (const service of missingCredentialRequests()) {
+    store.dismissedCredentials.delete(credentialDismissalKey(service));
+  }
+  promptForMissingCredentials({ force: true });
+});
+
+dom.credentialForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const service = store.credentialRequest;
+  const apiKey = dom.credentialKey.value.trim();
+  if (!service || !store.slug) return;
+  if (!apiKey) {
+    dom.credentialError.textContent = "Enter an API key to continue.";
+    dom.credentialError.hidden = false;
+    return;
+  }
+  dom.credentialError.hidden = true;
+  dom.credentialSubmit.disabled = true;
+  dom.credentialSubmit.textContent = "Saving...";
+  try {
+    const response = await api.saveCredential(store.slug, { service, apiKey });
+    store.dismissedCredentials.delete(credentialDismissalKey(service));
+    store.credentialRequest = null;
+    dom.credentialDialog.close();
+    applyPayload(response, { renderTranscript: false });
+    toast("API key saved locally. The service is ready to use.");
+  } catch (error) {
+    dom.credentialError.textContent = errorMessage(error);
+    dom.credentialError.hidden = false;
+  } finally {
+    dom.credentialSubmit.disabled = false;
+    dom.credentialSubmit.textContent = "Save API key";
+  }
+});
+
+dom.credentialDialog.addEventListener("close", () => {
+  const service = store.credentialRequest;
+  if (service) store.dismissedCredentials.add(credentialDismissalKey(service));
+  store.credentialRequest = null;
+  dom.credentialForm.reset();
+});
 
 dom.mediaPlayButton.addEventListener("click", () => {
   const player = activeMediaPlayer();

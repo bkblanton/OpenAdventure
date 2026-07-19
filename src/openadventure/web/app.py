@@ -24,7 +24,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from openadventure.config import AppConfig, load_config
+from openadventure.config import AppConfig, load_config, save_local_api_key
 from openadventure.engine.events import EngineEvent, RollResult
 from openadventure.engine.session import resolve_settings
 from openadventure.mechanics.dice import DiceError
@@ -57,6 +57,13 @@ LOCAL_HOST = "127.0.0.1"
 MAX_UPLOAD_BYTES = 512 * 1024 * 1024
 IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
 AUDIO_SUFFIXES = {".aac", ".flac", ".m4a", ".mp3", ".ogg", ".wav", ".webm"}
+CREDENTIAL_SERVICES = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "google": "GOOGLE_API_KEY",
+    "elevenlabs": "ELEVENLABS_API_KEY",
+}
 logger = logging.getLogger(__name__)
 
 
@@ -850,6 +857,38 @@ async def update_settings(request: Request) -> Response:
     return JSONResponse(campaign_payload(handle.session))
 
 
+async def save_credential(request: Request) -> Response:
+    """Persist one local provider key without ever returning it to the browser."""
+
+    handle = await _session_handle(request)
+    if isinstance(handle, JSONResponse):
+        return handle
+    try:
+        body = await _request_json(request)
+        if set(body) != {"service", "api_key"}:
+            raise ValueError("Credentials require a service and API key.")
+        service = body["service"]
+        api_key = body["api_key"]
+        if not isinstance(service, str) or service not in CREDENTIAL_SERVICES:
+            raise ValueError("Choose a supported local service.")
+        if not isinstance(api_key, str):
+            raise ValueError("Enter an API key.")
+    except ValueError as exc:
+        return _json_error(str(exc))
+    if handle.lock.locked():
+        return _json_error("Credentials cannot change during a turn.", 409)
+    async with handle.lock:
+        try:
+            save_local_api_key(CREDENTIAL_SERVICES[service], api_key)
+            # A Google image key can also satisfy a Gemini game model, and a
+            # just-entered provider key should take effect without a restart.
+            handle.session.connect_provider()
+            handle.session.reload_tools()
+        except (OSError, ValueError) as exc:
+            return _json_error(str(exc))
+    return JSONResponse(campaign_payload(handle.session))
+
+
 async def campaign_media(request: Request) -> Response:
     slug = request.path_params["slug"]
     if slugify(slug) != slug:
@@ -939,6 +978,11 @@ def create_app(config: AppConfig | None = None) -> Starlette:
             "/api/campaigns/{slug:str}/settings",
             update_settings,
             methods=["PATCH"],
+        ),
+        Route(
+            "/api/campaigns/{slug:str}/credentials",
+            save_credential,
+            methods=["POST"],
         ),
         Route(
             "/api/campaigns/{slug:str}/library",

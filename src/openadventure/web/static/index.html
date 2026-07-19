@@ -403,8 +403,11 @@
               <h3 id="media-settings-heading">Media</h3>
             </div>
             <p>Optional generated atmosphere, presented in this browser.</p>
-          </div>
-          <p id="media-settings-status" class="media-settings-status"></p>
+           </div>
+           <p id="media-settings-status" class="media-settings-status"></p>
+           <button id="settings-credentials-button" class="button button-quiet credential-button" type="button" hidden>
+             Add missing API key
+           </button>
 
           <div class="media-toggle-grid">
             <label class="toggle-field">
@@ -471,6 +474,37 @@
           <button id="settings-submit" class="button button-primary" type="submit">
             Save settings
           </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="credential-dialog" class="dialog credential-dialog">
+      <form id="credential-form" method="dialog" class="dialog-card credential-dialog-card">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Local setup</p>
+            <h2 id="credential-title">Connect a service</h2>
+          </div>
+          <button class="dialog-close" type="button" data-close-dialog aria-label="Close">&times;</button>
+        </div>
+        <p id="credential-intro" class="dialog-intro"></p>
+        <label class="field">
+          <span id="credential-label">API key</span>
+          <input
+            id="credential-key"
+            name="api_key"
+            type="password"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false"
+            required
+          >
+          <small id="credential-note">This key is saved only to this computer's local .env file.</small>
+        </label>
+        <p id="credential-error" class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button class="button button-quiet" type="button" data-close-dialog>Not now</button>
+          <button id="credential-submit" class="button button-primary" type="submit">Save API key</button>
         </div>
       </form>
     </dialog>

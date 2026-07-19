@@ -62,8 +62,9 @@ uv run openadventure web --port 8765 --no-open
 
 The web app stays on your machine and listens only on localhost. API keys are resolved exactly
 as they are for terminal play, from `.env`, environment variables, or `workspace/config.toml`.
-If the selected model has no key configured, the app explains which variable is missing and
-keeps local dice and campaign tools available.
+If the selected model, image generation, or audio generation needs a key, the app prompts for
+it in the browser and saves it only to the local `.env` file. Keys are never included in later
+browser responses. You can skip a prompt and keep using local dice and campaign tools.
 
 ## Detailed setup
 

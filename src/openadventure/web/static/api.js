@@ -184,6 +184,13 @@ export const api = {
     });
   },
 
+  saveCredential(slug, { service, apiKey }) {
+    return request(campaignPath(slug, "/credentials"), {
+      method: "POST",
+      body: JSON.stringify({ service, api_key: apiKey }),
+    });
+  },
+
   updateLibrary(slug, payload) {
     return request(campaignPath(slug, "/library"), {
       method: "PATCH",
