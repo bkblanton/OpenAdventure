@@ -1035,10 +1035,8 @@ function updateCampaignHeader() {
   const activeModule = Array.isArray(campaign.modules)
     ? campaign.modules.find((module) => module.slug === campaign.active_module)
     : null;
-  const settingModel = store.settings?.model || campaign.settings?.model;
   dom.campaignSubtitle.textContent = [
     activeModule?.title || campaign.active_module,
-    settingModel,
     campaign.system_source,
   ]
     .filter(Boolean)
