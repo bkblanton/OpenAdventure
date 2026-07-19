@@ -973,6 +973,7 @@ a:focus-visible {
 /* Composer */
 
 .composer-region {
+  position: relative;
   z-index: 5;
   padding: 8px max(14px, calc((100% - 820px) / 2)) 11px;
   border-top: 1px solid var(--line);
@@ -2389,10 +2390,13 @@ input[type="range"] {
 /* Persistent browser audio */
 
 .media-dock {
+  position: absolute;
+  z-index: 6;
+  right: max(14px, calc((100% - 820px) / 2));
+  bottom: calc(100% + 12px);
   display: grid;
-  width: min(100%, 820px);
+  width: min(390px, calc(100% - 28px));
   min-height: 58px;
-  margin: 0 auto 8px;
   padding: 10px 12px;
   grid-template-columns: auto minmax(0, 1fr) auto 100px;
   align-items: center;
@@ -2777,8 +2781,9 @@ input[type="range"] {
   }
 
   .media-dock {
-    width: 100%;
-    margin-bottom: 7px;
+    right: 8px;
+    bottom: calc(100% + 8px);
+    width: min(390px, calc(100% - 16px));
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
