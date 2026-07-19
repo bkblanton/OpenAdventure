@@ -245,15 +245,24 @@ function scrollToLatest(behavior = "smooth") {
   dom.jumpLatest.hidden = true;
 }
 
-function appendTranscript(element, { forceScroll = false } = {}) {
+function appendTranscript(element, { forceScroll = false, before = null } = {}) {
   const shouldScroll = forceScroll || isNearTranscriptEnd();
   if (dom.storyEmpty.isConnected) dom.storyEmpty.remove();
-  dom.transcript.append(element);
+  if (before?.parentElement === dom.transcript) dom.transcript.insertBefore(element, before);
+  else dom.transcript.append(element);
   if (shouldScroll) {
     window.requestAnimationFrame(() => scrollToLatest(forceScroll ? "auto" : "smooth"));
   } else {
     dom.jumpLatest.hidden = false;
   }
+}
+
+function appendTurnEvent(element, options = {}) {
+  const pendingResponse = store.activeAssistant?.article;
+  appendTranscript(element, {
+    ...options,
+    before: pendingResponse?.isConnected ? pendingResponse : null,
+  });
 }
 
 function messageMeta(label, time = "") {
@@ -399,7 +408,7 @@ function createRollCard(event) {
 }
 
 function renderRoll(event) {
-  appendTranscript(createRollCard(event));
+  appendTurnEvent(createRollCard(event));
 }
 
 function renderImage(event) {
@@ -415,7 +424,7 @@ function renderImage(event) {
     if (isNearTranscriptEnd()) scrollToLatest();
   });
   figure.append(image, node("figcaption", "", caption));
-  appendTranscript(figure);
+  appendTurnEvent(figure);
 }
 
 function clampVolume(value, fallback = 0.2) {
@@ -583,7 +592,7 @@ function renderMusic(event) {
   const title = event.mood || event.prompt || event.label || event.track_name || "campaign ambience";
   const card = node("section", "media-card");
   card.append(node("div", "media-caption", stopped ? "Music stopped" : `Now playing: ${title}`));
-  appendTranscript(card);
+  appendTurnEvent(card);
 
   if (stopped) {
     dom.musicPlayer.pause();
@@ -680,7 +689,7 @@ function renderModuleTransition(event) {
   const message = event.active_title
     ? `Completed ${event.completed_title || event.completed}. Now playing: ${event.active_title}.`
     : `Completed ${event.completed_title || event.completed}. The campaign arc is complete.`;
-  appendTranscript(node("div", "module-banner", message));
+  appendTurnEvent(node("div", "module-banner", message));
 }
 
 function handleEngineEvent(rawEvent, { background = false } = {}) {
@@ -696,7 +705,7 @@ function handleEngineEvent(rawEvent, { background = false } = {}) {
       renderHistory(event.history || []);
       break;
     case "action_message":
-      if (event.message) appendTranscript(systemMessage(event.message));
+      if (event.message) appendTurnEvent(systemMessage(event.message));
       break;
     case "turn_started":
       beginAssistant();
@@ -708,7 +717,7 @@ function handleEngineEvent(rawEvent, { background = false } = {}) {
       break;
     case "debug_chatter":
       if (store.campaign?.mode === "assistant" && event.text) {
-        appendTranscript(systemMessage(event.text, { label: event.reason || "GM notes" }));
+        appendTurnEvent(systemMessage(event.text, { label: event.reason || "GM notes" }));
       }
       break;
     case "tool_started": {
@@ -716,7 +725,7 @@ function handleEngineEvent(rawEvent, { background = false } = {}) {
       if (store.campaign?.mode === "assistant") {
         const card = toolCard(event, true);
         store.toolCards.set(event.call_id, card);
-        appendTranscript(card);
+        appendTurnEvent(card);
       }
       break;
     }
@@ -725,7 +734,7 @@ function handleEngineEvent(rawEvent, { background = false } = {}) {
       const existing = store.toolCards.get(event.call_id);
       const card = toolCard(event, false);
       if (existing?.isConnected) existing.replaceWith(card);
-      else appendTranscript(card);
+      else appendTurnEvent(card);
       store.toolCards.delete(event.call_id);
       break;
     }
@@ -743,7 +752,7 @@ function handleEngineEvent(rawEvent, { background = false } = {}) {
       break;
     case "background_task_finished":
       if (!event.ok) {
-        appendTranscript(systemMessage(event.message || "A background task failed.", { error: true }));
+        appendTurnEvent(systemMessage(event.message || "A background task failed.", { error: true }));
       } else if (background) {
         setTurnStatus(event.message || "Background work complete", "ready");
       }
@@ -766,14 +775,14 @@ function handleEngineEvent(rawEvent, { background = false } = {}) {
       handleMediaVolume(event);
       break;
     case "compaction_started":
-      appendTranscript(systemMessage("The chronicler is updating the story so far…", { label: "Chronicler" }));
+      appendTurnEvent(systemMessage("The chronicler is updating the story so far…", { label: "Chronicler" }));
       setTurnStatus("The chronicler is working…", "working");
       break;
     case "compaction_progress":
       setTurnStatus("The chronicler is still working…", "working");
       break;
     case "compaction_finished":
-      appendTranscript(systemMessage("The story summary is up to date.", { label: "Chronicler" }));
+      appendTurnEvent(systemMessage("The story summary is up to date.", { label: "Chronicler" }));
       break;
     case "engine_error":
       renderEngineError(event);
