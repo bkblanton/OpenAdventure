@@ -1965,11 +1965,13 @@ function openSettings() {
 
 function closeInspector() {
   dom.inspector.classList.remove("is-open");
+  dom.inspector.inert = true;
   dom.inspectorOverlay.hidden = true;
   dom.inspectorToggle.setAttribute("aria-expanded", "false");
 }
 
 function openInspector() {
+  dom.inspector.inert = false;
   dom.inspector.classList.add("is-open");
   dom.inspectorOverlay.hidden = false;
   dom.inspectorToggle.setAttribute("aria-expanded", "true");

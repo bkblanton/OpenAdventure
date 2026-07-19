@@ -498,7 +498,8 @@ a:focus-visible {
 
 .inspector-toggle,
 .inspector-close {
-  display: none;
+  display: inline-flex;
+  align-items: center;
 }
 
 .connection-notice {
@@ -534,7 +535,7 @@ a:focus-visible {
 .game-layout {
   display: grid;
   height: calc(100dvh - 66px);
-  grid-template-columns: minmax(0, 1fr) 350px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .story-column {
@@ -1141,11 +1142,34 @@ a:focus-visible {
 /* Inspector */
 
 .inspector {
+  position: fixed;
+  z-index: 51;
+  top: 66px;
+  right: 0;
+  bottom: 0;
+  width: min(390px, 91vw);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-left: 1px solid var(--line);
+  border-left: 1px solid var(--line-strong);
   background: var(--canvas);
+  box-shadow: -18px 0 55px rgb(0 0 0 / 38%);
+  transform: translateX(104%);
+  transition: transform 190ms ease;
+}
+
+.inspector.is-open {
+  transform: translateX(0);
+}
+
+.inspector-overlay {
+  position: fixed;
+  z-index: 50;
+  top: 66px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: rgb(5 4 3 / 65%);
 }
 
 .inspector-heading {
@@ -2219,13 +2243,10 @@ input[type="range"] {
 /* Persistent browser audio */
 
 .media-dock {
-  position: fixed;
-  z-index: 70;
-  right: 18px;
-  bottom: 18px;
   display: grid;
-  width: min(520px, calc(100% - 36px));
-  min-height: 66px;
+  width: min(100%, 820px);
+  min-height: 58px;
+  margin: 0 auto 8px;
   padding: 10px 12px;
   grid-template-columns: auto minmax(0, 1fr) auto 100px;
   align-items: center;
@@ -2243,16 +2264,16 @@ input[type="range"] {
 
 .media-dock-pulse {
   display: grid;
-  width: 37px;
-  height: 37px;
+  width: 33px;
+  height: 33px;
   place-items: center;
   border-radius: 50%;
   background: var(--sage-deep);
 }
 
 .media-dock-pulse span {
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--sage);
   box-shadow: 0 0 0 0 rgb(131 164 127 / 38%);
@@ -2314,10 +2335,6 @@ input[type="range"] {
 
 .media-volume-control input {
   width: 100%;
-}
-
-body:has(.media-dock:not([hidden])) .toast-region {
-  bottom: 98px;
 }
 
 @keyframes library-orbit {
@@ -2394,10 +2411,6 @@ body:has(.media-dock:not([hidden])) .toast-region {
 }
 
 @media (max-width: 1020px) {
-  .game-layout {
-    grid-template-columns: minmax(0, 1fr) 310px;
-  }
-
   .inspector-tab {
     font-size: 9px;
   }
@@ -2412,34 +2425,12 @@ body:has(.media-dock:not([hidden])) .toast-region {
     height: 100%;
   }
 
-  .inspector-toggle,
-  .inspector-close {
-    display: inline-flex;
-    align-items: center;
-  }
-
   .inspector {
-    position: fixed;
-    z-index: 51;
     top: 0;
-    right: 0;
-    bottom: 0;
-    width: min(390px, 91vw);
-    border-left-color: var(--line-strong);
-    box-shadow: -18px 0 55px rgb(0 0 0 / 38%);
-    transform: translateX(104%);
-    transition: transform 190ms ease;
-  }
-
-  .inspector.is-open {
-    transform: translateX(0);
   }
 
   .inspector-overlay {
-    position: fixed;
-    z-index: 50;
-    inset: 0;
-    background: rgb(5 4 3 / 65%);
+    top: 0;
   }
 
   .inspector-heading {
@@ -2640,9 +2631,8 @@ body:has(.media-dock:not([hidden])) .toast-region {
   }
 
   .media-dock {
-    right: 10px;
-    bottom: max(10px, env(safe-area-inset-bottom));
-    width: calc(100% - 20px);
+    width: 100%;
+    margin-bottom: 7px;
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
@@ -2650,9 +2640,6 @@ body:has(.media-dock:not([hidden])) .toast-region {
     display: none;
   }
 
-  body:has(.media-dock:not([hidden])) .toast-region {
-    bottom: 90px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
