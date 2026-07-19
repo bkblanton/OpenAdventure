@@ -135,6 +135,24 @@
             </div>
 
             <section class="composer-region" aria-label="Send a message">
+              <section id="media-dock" class="media-dock" aria-label="Campaign audio" hidden>
+                <div class="media-dock-pulse" aria-hidden="true"><span></span></div>
+                <div class="media-dock-copy">
+                  <span id="media-dock-kind" class="media-dock-kind">Campaign audio</span>
+                  <strong id="media-dock-title">Ready to play</strong>
+                  <span id="media-dock-status" class="media-dock-status" role="status" aria-live="polite"></span>
+                </div>
+                <button id="media-play-button" class="media-control" type="button" aria-label="Pause audio">
+                  Pause
+                </button>
+                <label class="media-volume-control">
+                  <span class="sr-only">Music volume</span>
+                  <input id="media-dock-volume" type="range" min="0" max="1" step="0.05" value="0.2">
+                </label>
+                <audio id="foreground-audio-player" preload="auto"></audio>
+                <audio id="music-player" preload="auto" loop></audio>
+              </section>
+
               <div id="turn-status" class="turn-status" role="status" aria-live="polite">
                 <span class="turn-status-dot" aria-hidden="true"></span>
                 <span id="turn-status-text">Ready</span>
@@ -201,7 +219,7 @@
           </main>
 
           <div id="inspector-overlay" class="inspector-overlay" hidden></div>
-          <aside id="inspector" class="inspector" aria-label="Campaign state">
+          <aside id="inspector" class="inspector" aria-label="Campaign state" inert>
             <div class="inspector-heading">
               <div>
                 <p class="eyebrow">Live campaign</p>
@@ -692,24 +710,6 @@
         </div>
       </form>
     </dialog>
-
-    <section id="media-dock" class="media-dock" aria-label="Campaign audio" hidden>
-      <div class="media-dock-pulse" aria-hidden="true"><span></span></div>
-      <div class="media-dock-copy">
-        <span id="media-dock-kind" class="media-dock-kind">Campaign audio</span>
-        <strong id="media-dock-title">Ready to play</strong>
-        <span id="media-dock-status" class="media-dock-status" role="status" aria-live="polite"></span>
-      </div>
-      <button id="media-play-button" class="media-control" type="button" aria-label="Pause audio">
-        Pause
-      </button>
-      <label class="media-volume-control">
-        <span class="sr-only">Music volume</span>
-        <input id="media-dock-volume" type="range" min="0" max="1" step="0.05" value="0.2">
-      </label>
-      <audio id="foreground-audio-player" preload="auto"></audio>
-      <audio id="music-player" preload="auto" loop></audio>
-    </section>
 
     <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
     <div id="global-status" class="sr-only" role="status" aria-live="polite"></div>
