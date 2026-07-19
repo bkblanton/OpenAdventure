@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from openadventure.engine.tools.registry import ToolRegistry
+from openadventure.providers.base import Usage
 
 if TYPE_CHECKING:
     from openadventure.ingest.embeddings import EmbeddingBackend
@@ -20,6 +22,7 @@ def build_registry(
     embed_backend: EmbeddingBackend | None = None,
     capabilities: MediaCapabilities | None = None,
     docs: dict[str, str] | None = None,
+    usage_recorder: Callable[[Usage, str, str, str | None], None] | None = None,
 ) -> ToolRegistry:
     """Assemble the toolset for a campaign. Tools register conditionally:
     rules tools need an ingested source, campaign tools need module docs,
@@ -81,7 +84,7 @@ def build_registry(
         sound_effects = None
     if not (meta.music_enabled and caps.music):
         music = None
-    for tool in make_ambience_tools(images, music, sound_effects):
+    for tool in make_ambience_tools(images, music, sound_effects, usage_recorder=usage_recorder):
         if tool.name == "stage_sound_effect" and meta.mode != "gm":
             continue
         registry.register(tool)

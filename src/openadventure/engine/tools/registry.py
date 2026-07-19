@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, cast
 from pydantic import BaseModel, ValidationError
 
 from openadventure.engine.events import EngineEvent
-from openadventure.providers.base import ToolDef
+from openadventure.providers.base import ToolDef, Usage
 
 if TYPE_CHECKING:
     from openadventure.media.host import MediaHost
@@ -40,10 +40,25 @@ class ToolContext:
     narration_cues: int = 0
     voice_cues: list[Any] = field(default_factory=list)
     sound_effect_cues: list[Any] = field(default_factory=list)
+    # Session-owned accounting hook. Media work is deliberately asynchronous,
+    # so it must record successful generation from its background task rather
+    # than when the model merely requests a tool call.
+    usage_recorder: Callable[[Usage, str, str, str | None], None] | None = None
     # Read-only turn (a /btw aside): only read-only tools may run; dispatch
     # refuses anything that would mutate state. Independent of whether the turn
     # is logged: an off-the-record /sudo directive is unlogged but DOES mutate.
     read_only: bool = False
+
+    def record_media_usage(
+        self,
+        usage: Usage,
+        *,
+        kind: str,
+        backend_name: str,
+        model_id: str | None,
+    ) -> None:
+        if self.usage_recorder is not None:
+            self.usage_recorder(usage, kind, backend_name, model_id)
 
 
 @dataclass

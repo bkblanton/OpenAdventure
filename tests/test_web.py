@@ -182,6 +182,11 @@ async def test_turn_stream_is_valid_ndjson_from_fake_provider(web_client):
         "output_tokens": 5,
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 0,
+        "thinking_tokens": 0,
+        "image_count": 0,
+        "tts_characters": 0,
+        "sound_effect_seconds": 0.0,
+        "music_seconds": 0.0,
     }
     assert events[-1]["state"]["meta"]["slug"] == "stream-test"
 

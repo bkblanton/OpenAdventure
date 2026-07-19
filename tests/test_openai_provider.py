@@ -246,6 +246,9 @@ async def test_stream_emits_text_then_turn_done():
     assert done.usage.input_tokens == 60
     assert done.usage.cache_read_input_tokens == 40
     assert done.usage.output_tokens == 20
+    # Reasoning is already included in OpenAI's billable output total; the
+    # breakdown must expose it without adding another output category.
+    assert done.usage.thinking_tokens == 8
 
 
 async def test_stream_maps_function_call_and_reasoning():

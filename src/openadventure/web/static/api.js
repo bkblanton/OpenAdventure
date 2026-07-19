@@ -133,6 +133,10 @@ export const api = {
     return request(campaignPath(slug, "/state"));
   },
 
+  usage(slug) {
+    return request(campaignPath(slug, "/usage"));
+  },
+
   events(slug) {
     return request(campaignPath(slug, "/events"));
   },

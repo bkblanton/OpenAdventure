@@ -208,10 +208,25 @@ class ToolDef(BaseModel):
 
 
 class Usage(BaseModel):
+    """Usage accrued by one provider or media operation.
+
+    ``output_tokens`` deliberately remains the provider's full billable output
+    count. ``thinking_tokens`` is an informational subset of it, never an
+    additional billable category. Media fields are estimates because the media
+    APIs do not return one portable billing unit across providers, and the
+    generic media protocol cannot reliably distinguish a backend cache hit from
+    a fresh generation request.
+    """
+
     input_tokens: int = 0
     output_tokens: int = 0
     cache_creation_input_tokens: int = 0
     cache_read_input_tokens: int = 0
+    thinking_tokens: int = 0
+    image_count: int = 0
+    tts_characters: int = 0
+    sound_effect_seconds: float = 0.0
+    music_seconds: float = 0.0
 
     def add(self, other: Usage) -> Usage:
         return Usage(
@@ -221,6 +236,11 @@ class Usage(BaseModel):
                 self.cache_creation_input_tokens + other.cache_creation_input_tokens
             ),
             cache_read_input_tokens=self.cache_read_input_tokens + other.cache_read_input_tokens,
+            thinking_tokens=self.thinking_tokens + other.thinking_tokens,
+            image_count=self.image_count + other.image_count,
+            tts_characters=self.tts_characters + other.tts_characters,
+            sound_effect_seconds=self.sound_effect_seconds + other.sound_effect_seconds,
+            music_seconds=self.music_seconds + other.music_seconds,
         )
 
 

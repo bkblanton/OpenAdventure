@@ -65,8 +65,8 @@ def test_model_set_flags_backend_switch(make_session):
 
 
 def test_model_set_same_backend_connected_needs_no_provider(make_session):
-    session = make_session(script=[])  # connected on the anthropic default
-    result = commands.cmd_model(session, "claude-opus-4-8")
+    session = make_session(script=[])  # connected on the OpenAI default
+    result = commands.cmd_model(session, "gpt-5.6-sol")
     assert result.data.switched is False and result.data.needs_provider is False
 
 

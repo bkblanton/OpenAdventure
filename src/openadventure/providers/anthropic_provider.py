@@ -37,6 +37,18 @@ _STOP_REASONS: dict[str | None, StopReason] = {
 }
 
 
+def _estimated_tokens(text: str) -> int:
+    """Match the engine's lightweight token estimate without importing it here.
+
+    The provider package is the dependency root for the engine, so importing
+    ``engine.context.est_tokens`` would create a cycle. Anthropic returns the
+    total output count but not a separate thinking count, making the completed
+    thinking block the best portable breakdown available.
+    """
+
+    return max(1, len(text) // 4) if text else 0
+
+
 def _convert_messages(messages: list[Message], *, cache_last: bool = False) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for message in messages:
@@ -189,8 +201,10 @@ class AnthropicProvider:
         except anthropic.APIConnectionError as exc:
             raise ProviderError("Could not reach the Anthropic API (network error).") from exc
 
+        thinking_tokens_est = 0
         for block in final.content:
             if block.type == "thinking":
+                thinking_tokens_est += _estimated_tokens(block.thinking)
                 yield PThinking(thinking=block.thinking, signature=block.signature or "")
             elif block.type == "redacted_thinking":
                 yield PRedactedThinking(data=block.data)
@@ -202,5 +216,9 @@ class AnthropicProvider:
             output_tokens=final.usage.output_tokens,
             cache_creation_input_tokens=final.usage.cache_creation_input_tokens or 0,
             cache_read_input_tokens=final.usage.cache_read_input_tokens or 0,
+            # Anthropic's final usage reports total output only. Keep its exact
+            # billable total intact and expose a bounded estimate for the
+            # thinking subset from the completed block.
+            thinking_tokens=min(thinking_tokens_est, final.usage.output_tokens),
         )
         yield PTurnDone(stop_reason=_STOP_REASONS.get(final.stop_reason, "other"), usage=usage)

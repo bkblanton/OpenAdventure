@@ -13,6 +13,9 @@ from openadventure.media.tts import DEFAULT_OUTPUT_FORMAT
 
 DEFAULT_ELEVENLABS_SOUND_EFFECTS_MODEL_ID = "eleven_text_to_sound_v2"
 DEFAULT_SFX_VOLUME = 1.0  # default sfx playback volume, read by the media host
+# ElevenLabs chooses a duration when callers omit one. Keep usage estimates
+# stable and explicit rather than pretending we know the generated file length.
+DEFAULT_SFX_ESTIMATED_DURATION_SECONDS = 5.0
 
 
 class ElevenLabsSoundEffects(_elevenlabs.ElevenLabsAuth):

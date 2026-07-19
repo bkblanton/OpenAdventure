@@ -332,14 +332,19 @@ def _reasoning_item(summary: str, signature: str) -> dict[str, Any] | None:
 
 def _usage(meta: dict[str, Any]) -> Usage:
     cached = (meta.get("input_tokens_details") or {}).get("cached_tokens", 0) or 0
+    output = meta.get("output_tokens", 0) or 0
+    thinking = (meta.get("output_tokens_details") or {}).get("reasoning_tokens", 0) or 0
     return Usage(
         # input_tokens counts cached tokens too; split them out like the other
         # adapters so cost estimation reads a cache hit cheaply. OpenAI's
         # output_tokens already includes reasoning tokens, and there is no separate
         # cache-write charge, so cache_creation stays zero.
         input_tokens=max((meta.get("input_tokens", 0) or 0) - cached, 0),
-        output_tokens=meta.get("output_tokens", 0) or 0,
+        output_tokens=output,
         cache_read_input_tokens=cached,
+        # Responses reports reasoning as a subset of output. Preserve the
+        # total for billing and expose the exact subset for the usage view.
+        thinking_tokens=min(thinking, output),
     )
 
 

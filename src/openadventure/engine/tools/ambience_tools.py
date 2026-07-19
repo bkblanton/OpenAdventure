@@ -7,6 +7,7 @@ import hashlib
 import os
 import shutil
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -15,6 +16,8 @@ from openadventure.engine.events import ImageGenerated, MusicStarted, MusicStopp
 from openadventure.engine.tools.registry import Tool, ToolContext, ToolOutcome
 from openadventure.media.base import ImageBackend, MusicBackend, SoundEffectsBackend
 from openadventure.media.narration import SoundEffectCue
+from openadventure.media.sound_effects import DEFAULT_SFX_ESTIMATED_DURATION_SECONDS
+from openadventure.providers.base import Usage
 from openadventure.util import shorten
 
 
@@ -216,8 +219,30 @@ def make_ambience_tools(
     images: ImageBackend | None,
     music: MusicBackend | None,
     sound_effects: SoundEffectsBackend | None = None,
+    *,
+    usage_recorder: Callable[[Usage, str, str, str | None], None] | None = None,
 ) -> list[Tool]:
     tools: list[Tool] = []
+
+    def record_media_usage(ctx: ToolContext, usage: Usage, kind: str, backend: object) -> None:
+        """Record only after a backend has successfully generated its asset.
+
+        Most callers carry the recorder on their ``ToolContext``. The optional
+        factory argument keeps standalone registries useful for integrations that
+        do not construct a full GameSession.
+        """
+
+        backend_name = type(backend).__name__
+        model_id = getattr(backend, "model_id", None)
+        if ctx.usage_recorder is not None:
+            ctx.record_media_usage(
+                usage,
+                kind=kind,
+                backend_name=backend_name,
+                model_id=model_id,
+            )
+        elif usage_recorder is not None:
+            usage_recorder(usage, kind, backend_name, model_id)
 
     if images is not None:
 
@@ -235,6 +260,7 @@ def make_ambience_tools(
                 path = await images.generate(
                     args.subject, args.description, reference_images=refs or None
                 )
+                record_media_usage(ctx, Usage(image_count=1), "image", images)
                 saved = _persist_image(ctx, path, args.subject)
                 ctx.log.append(
                     "media",
@@ -366,6 +392,18 @@ def make_ambience_tools(
                     length_seconds=args.length_seconds,
                     allow_vocals=args.allow_vocals,
                 )
+                length_seconds = getattr(track, "length_seconds", None)
+                if length_seconds is None:
+                    length_seconds = args.length_seconds or getattr(
+                        music, "default_length_seconds", 0.0
+                    )
+                if length_seconds:
+                    record_media_usage(
+                        ctx,
+                        Usage(music_seconds=float(length_seconds)),
+                        "music",
+                        music,
+                    )
                 # Persist into the campaign's music dir under a readable name, so
                 # the track lives with the campaign and resume can replay it.
                 path = persist_track(
@@ -383,7 +421,7 @@ def make_ambience_tools(
                         "kind": "music",
                         "prompt": args.prompt,
                         "path": str(path),
-                        "length_seconds": getattr(track, "length_seconds", None),
+                        "length_seconds": length_seconds,
                     },
                 )
                 return [MusicStarted(track=args.prompt)]
@@ -461,6 +499,16 @@ def make_ambience_tools(
                     duration_seconds=args.duration_seconds,
                     prompt_influence=args.prompt_influence,
                     loop=args.loop,
+                )
+                record_media_usage(
+                    ctx,
+                    Usage(
+                        sound_effect_seconds=(
+                            args.duration_seconds or DEFAULT_SFX_ESTIMATED_DURATION_SECONDS
+                        )
+                    ),
+                    "sound_effect",
+                    sound_effects,
                 )
                 if ctx.media_host is not None:
                     await ctx.media_host.play_sound_effect(path)

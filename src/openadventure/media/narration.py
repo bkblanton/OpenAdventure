@@ -7,12 +7,15 @@ import contextlib
 import hashlib
 import inspect
 import re
+from collections.abc import Callable
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from openadventure.media.host import MediaCapabilities, MediaHost, NullMediaHost
-from openadventure.media.tts import DEFAULT_ELEVENLABS_VOICE_ID, VoiceRecord
+from openadventure.media.sound_effects import DEFAULT_SFX_ESTIMATED_DURATION_SECONDS
+from openadventure.media.tts import DEFAULT_ELEVENLABS_VOICE_ID, VoiceRecord, speech_text
+from openadventure.providers.base import Usage
 from openadventure.store import snapshots
 from openadventure.store.workspace import Campaign, slugify
 from openadventure.util import shorten
@@ -188,12 +191,14 @@ class NarrationAgent:
         tts=None,
         sound_effects=None,
         host: MediaHost | None = None,
+        usage_recorder: Callable[[Usage, str, str, str | None], None] | None = None,
     ):
         self.campaign = campaign
         self.log = log
         self.background = background
         self.tts = tts  # generation backend (synthesize)
         self.sound_effects = sound_effects  # generation backend (generate)
+        self.usage_recorder = usage_recorder
         # The host presents what the backends generate; default to a no-op host
         # so a directly-constructed agent (tests, headless) never crashes.
         self.host: MediaHost = host or NullMediaHost(MediaCapabilities.all())
@@ -469,6 +474,15 @@ class NarrationAgent:
                 prompt_influence=prompt_influence,
                 loop=loop,
             )
+            self._record_media_usage(
+                Usage(
+                    sound_effect_seconds=(
+                        duration_seconds or DEFAULT_SFX_ESTIMATED_DURATION_SECONDS
+                    )
+                ),
+                "sound_effect",
+                self.sound_effects,
+            )
             self._record_clip("sound", path)
             await self.host.play_sound_effect(path)
             self._log_sound_effect(
@@ -733,8 +747,16 @@ class NarrationAgent:
         synthesize = self.tts.synthesize
         parameters = inspect.signature(synthesize).parameters
         if "voice_id" in parameters and assignment.voice_id:
-            return await synthesize(text, voice_id=assignment.voice_id)
-        return await synthesize(text)
+            path = await synthesize(text, voice_id=assignment.voice_id)
+        else:
+            path = await synthesize(text)
+        if path is not None:
+            # Count only successful synthesis. The submitted, speech-cleaned
+            # text is the closest portable proxy for the provider's billed
+            # character count, including on custom backends that do not expose
+            # a response usage header.
+            self._record_media_usage(Usage(tts_characters=len(speech_text(text))), "tts", self.tts)
+        return path
 
     async def _speak(self, text: str, assignment: VoiceAssignment) -> None:
         """Synthesize one line via the backend, then play it through the host."""
@@ -749,6 +771,15 @@ class NarrationAgent:
             duration_seconds=cue.duration_seconds,
             prompt_influence=cue.prompt_influence,
             loop=cue.loop,
+        )
+        self._record_media_usage(
+            Usage(
+                sound_effect_seconds=(
+                    cue.duration_seconds or DEFAULT_SFX_ESTIMATED_DURATION_SECONDS
+                )
+            ),
+            "sound_effect",
+            self.sound_effects,
         )
         self._record_clip("sound", path)
         await self.host.play_sound_effect(path)
@@ -805,6 +836,18 @@ class NarrationAgent:
                 "queued_by": "narration",
                 "after_text": cue.after_text,
             },
+        )
+
+    def _record_media_usage(self, usage: Usage, kind: str, backend: object) -> None:
+        """Pass a completed media operation to the owning session, if any."""
+
+        if self.usage_recorder is None:
+            return
+        self.usage_recorder(
+            usage,
+            kind,
+            type(backend).__name__,
+            getattr(backend, "model_id", None),
         )
 
     def _coerce_voice_cue(self, cue: VoiceCue | dict[str, Any]) -> VoiceCue:

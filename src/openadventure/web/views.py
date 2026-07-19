@@ -16,7 +16,13 @@ from typing import Any
 
 from openadventure.config import AppConfig
 from openadventure.engine.events import EngineEvent
-from openadventure.engine.session import GameSession, resolve_settings, resolve_utility_settings
+from openadventure.engine.session import (
+    GameSession,
+    empty_cost_breakdown,
+    normalize_usage_data,
+    resolve_settings,
+    resolve_utility_settings,
+)
 from openadventure.mechanics.clocks import ClockBoard
 from openadventure.mechanics.encounter import Encounter
 from openadventure.mechanics.sheets import Sheet
@@ -140,13 +146,18 @@ def campaign_payload(
             "model": resolved.model,
             "connected": False,
         }
+    usage = usage_payload(source)
     return {
         "campaign": campaign_metadata(meta),
         "settings": settings,
         "provider": provider,
         "media": media_payload(session) if session is not None else None,
         "history": public_history(source, mode=meta.mode),
-        "state": state_snapshot(source, mode=meta.mode),
+        # Usage is a first-class browser payload rather than an accidental
+        # sidebar detail. Keep it in the state snapshot too so streamed state
+        # updates refresh the display after every completed operation.
+        "usage": usage,
+        "state": state_snapshot(source, mode=meta.mode, usage=usage),
     }
 
 
@@ -215,6 +226,7 @@ def state_snapshot(
     source: CampaignSource,
     *,
     mode: Mode | None = None,
+    usage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return the browser sidebar's current, public campaign state."""
 
@@ -240,7 +252,7 @@ def state_snapshot(
     if current_mode == "gm":
         clocks = [clock for clock in clocks if clock.visible]
 
-    usage = session.usage_report() if session is not None else _stored_usage(campaign)
+    usage = usage if usage is not None else usage_payload(source)
     return {
         "meta": campaign_metadata(meta),
         "party": party,
@@ -250,6 +262,13 @@ def state_snapshot(
         "clocks": [clock.model_dump(mode="json") for clock in clocks],
         "usage": usage,
     }
+
+
+def usage_payload(source: CampaignSource) -> dict[str, Any]:
+    """Return the usage and rough-cost report safe to show in the browser."""
+
+    campaign, session = _campaign_and_session(source)
+    return session.usage_report() if session is not None else _stored_usage(campaign)
 
 
 def sanitize_event(
@@ -370,11 +389,21 @@ def _encounter_payload(campaign: Campaign) -> dict[str, Any] | None:
 
 
 def _stored_usage(campaign: Campaign) -> dict[str, Any]:
-    return snapshots.load_json(campaign.usage_path) or {
-        "totals": Usage().model_dump(mode="json"),
-        "cost_usd": 0.0,
-        "by_model": {},
+    """Load and upgrade a usage report for a campaign without a live session."""
+
+    data = normalize_usage_data(snapshots.load_json(campaign.usage_path))
+    empty_session = Usage().model_dump(mode="json")
+    empty_session_costs = empty_cost_breakdown()
+    data["session"] = empty_session
+    data["session_cost_usd"] = 0.0
+    data["session_cost_breakdown"] = empty_session_costs
+    data["estimated"] = {
+        **data["totals"],
+        "cost_usd": data["cost_usd"],
+        "cost_breakdown": data["cost_breakdown"],
     }
+    data["estimated_cost_usd"] = data["cost_usd"]
+    return data
 
 
 def _history_entry(entry: LogEntry, mode: Mode) -> dict[str, Any] | None:

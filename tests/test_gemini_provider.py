@@ -305,7 +305,11 @@ async def test_stream_emits_text_then_turn_done():
         {"candidates": [{"content": {"parts": [{"text": "You enter "}]}}]},
         {
             "candidates": [{"content": {"parts": [{"text": "a cave."}]}, "finishReason": "STOP"}],
-            "usageMetadata": {"promptTokenCount": 100, "candidatesTokenCount": 20},
+            "usageMetadata": {
+                "promptTokenCount": 100,
+                "candidatesTokenCount": 20,
+                "thoughtsTokenCount": 7,
+            },
         },
     ]
     events = await _drain(_provider(), chunks)
@@ -315,7 +319,10 @@ async def test_stream_emits_text_then_turn_done():
     assert done.type == "turn_done"
     assert done.stop_reason == "end_turn"
     assert done.usage.input_tokens == 100
-    assert done.usage.output_tokens == 20
+    # Gemini reports thoughts separately, while its billable output total is
+    # candidate output plus thoughts.
+    assert done.usage.output_tokens == 27
+    assert done.usage.thinking_tokens == 7
 
 
 async def test_stream_maps_function_call_to_tool_use():

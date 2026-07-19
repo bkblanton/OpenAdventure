@@ -162,6 +162,7 @@ const store = {
   media: {},
   history: [],
   gameState: {},
+  usage: {},
   busy: false,
   messageKind: "normal",
   inspectorTab: localStorage.getItem("openadventure.inspectorTab") || "party",
@@ -173,6 +174,8 @@ const store = {
   pollTimer: null,
   pollInFlight: false,
   pollHadError: false,
+  usageRefreshTimer: null,
+  usageRefreshInFlight: false,
   libraryJobId: null,
   libraryJobTimer: null,
   libraryJobActivity: [],
@@ -822,6 +825,7 @@ function normalizePayload(payload) {
     media,
     history: Array.isArray(payload?.history) ? payload.history : [],
     state: payload?.state || {},
+    usage: payload?.usage || payload?.state?.usage || {},
   };
 }
 
@@ -835,10 +839,11 @@ function applyPayload(payload, { renderTranscript = true } = {}) {
   store.media = normalized.media || {};
   syncMediaPayload(store.media);
   store.history = normalized.history;
-  store.gameState = normalized.state;
+  store.usage = normalized.usage;
+  store.gameState = { ...normalized.state, usage: store.usage };
   updateCampaignHeader();
   updateConnection();
-  applyState(normalized.state);
+  applyState(store.gameState);
   if (renderTranscript) {
     renderHistory(normalized.history);
     restoreCampaignImages(store.media);
@@ -847,7 +852,11 @@ function applyPayload(payload, { renderTranscript = true } = {}) {
 }
 
 function applyState(state) {
-  store.gameState = state || {};
+  const nextState = state && typeof state === "object" ? state : {};
+  if (nextState.usage && typeof nextState.usage === "object") {
+    store.usage = nextState.usage;
+  }
+  store.gameState = { ...nextState, usage: store.usage };
   if (store.gameState.media && typeof store.gameState.media === "object") {
     store.media = { ...store.media, ...store.gameState.media };
   }
@@ -1556,6 +1565,7 @@ async function openCampaign(slug, suppliedPayload = null, { updateUrl = true } =
   if (!slug) return;
   const previousSlug = store.slug;
   stopEventPolling();
+  stopUsageRefresh();
   if (previousSlug && previousSlug !== slug) stopBrowserMedia();
   store.slug = slug;
   dom.libraryView.hidden = true;
@@ -1572,6 +1582,7 @@ async function openCampaign(slug, suppliedPayload = null, { updateUrl = true } =
       window.history.pushState({ slug: store.slug }, "", campaignHash(store.slug));
     }
     startEventPolling();
+    syncUsageRefresh();
   } catch (error) {
     appendTranscript(systemMessage(errorMessage(error), { error: true, label: "OpenAdventure" }));
     setTurnStatus("Campaign could not open", "error");
@@ -1581,6 +1592,7 @@ async function openCampaign(slug, suppliedPayload = null, { updateUrl = true } =
 function showLibrary({ updateUrl = true } = {}) {
   if (store.busy) cancelTurn();
   stopEventPolling();
+  stopUsageRefresh();
   stopBrowserMedia();
   closeInspector();
   store.slug = null;
@@ -1968,6 +1980,7 @@ function closeInspector() {
   dom.inspector.inert = true;
   dom.inspectorOverlay.hidden = true;
   dom.inspectorToggle.setAttribute("aria-expanded", "false");
+  syncUsageRefresh();
 }
 
 function openInspector() {
@@ -1975,11 +1988,12 @@ function openInspector() {
   dom.inspector.classList.add("is-open");
   dom.inspectorOverlay.hidden = false;
   dom.inspectorToggle.setAttribute("aria-expanded", "true");
+  syncUsageRefresh();
   window.setTimeout(() => dom.inspectorClose.focus(), 0);
 }
 
 function setInspectorTab(tab) {
-  if (!["party", "scene", "encounter", "clocks"].includes(tab)) return;
+  if (!["party", "scene", "encounter", "clocks", "usage"].includes(tab)) return;
   store.inspectorTab = tab;
   localStorage.setItem("openadventure.inspectorTab", tab);
   document.querySelectorAll("[data-inspector-tab]").forEach((button) => {
@@ -1989,6 +2003,52 @@ function setInspectorTab(tab) {
     button.tabIndex = selected ? 0 : -1;
   });
   renderInspector(dom.inspectorContent, tab, store.gameState, store.campaign?.mode || "gm");
+  syncUsageRefresh();
+}
+
+function stopUsageRefresh() {
+  if (store.usageRefreshTimer) window.clearInterval(store.usageRefreshTimer);
+  store.usageRefreshTimer = null;
+}
+
+function shouldRefreshUsage() {
+  return (
+    Boolean(store.slug) &&
+    store.inspectorTab === "usage" &&
+    dom.inspector.classList.contains("is-open") &&
+    !document.hidden
+  );
+}
+
+async function refreshUsage() {
+  if (!shouldRefreshUsage() || store.usageRefreshInFlight) return;
+  const slug = store.slug;
+  store.usageRefreshInFlight = true;
+  try {
+    const payload = await api.usage(slug);
+    const usage = payload?.usage;
+    if (!usage || typeof usage !== "object" || store.slug !== slug) return;
+    store.usage = usage;
+    store.gameState = { ...store.gameState, usage };
+    renderInspector(dom.inspectorContent, store.inspectorTab, store.gameState, store.campaign?.mode || "gm");
+  } catch (error) {
+    // The regular campaign poll owns connection status. A failed optional
+    // refresh should leave the last usable report visible.
+    console.warn("Usage refresh failed:", error);
+  } finally {
+    store.usageRefreshInFlight = false;
+  }
+}
+
+function syncUsageRefresh() {
+  if (!shouldRefreshUsage()) {
+    stopUsageRefresh();
+    return;
+  }
+  refreshUsage();
+  if (!store.usageRefreshTimer) {
+    store.usageRefreshTimer = window.setInterval(refreshUsage, 2000);
+  }
 }
 
 async function pollEvents() {
@@ -2333,7 +2393,7 @@ document.querySelectorAll("[data-inspector-tab]").forEach((button) => {
   button.addEventListener("keydown", (event) => {
     if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
     event.preventDefault();
-    const tabs = ["party", "scene", "encounter", "clocks"];
+    const tabs = ["party", "scene", "encounter", "clocks", "usage"];
     const current = tabs.indexOf(store.inspectorTab);
     const direction = event.key === "ArrowRight" ? 1 : -1;
     const next = tabs[(current + direction + tabs.length) % tabs.length];
@@ -2546,13 +2606,19 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) stopEventPolling();
-  else startEventPolling();
+  if (document.hidden) {
+    stopEventPolling();
+    stopUsageRefresh();
+  } else {
+    startEventPolling();
+    syncUsageRefresh();
+  }
 });
 
 window.addEventListener("popstate", routeFromLocation);
 window.addEventListener("beforeunload", () => {
   stopEventPolling();
+  stopUsageRefresh();
   stopLibraryJobPolling();
 });
 

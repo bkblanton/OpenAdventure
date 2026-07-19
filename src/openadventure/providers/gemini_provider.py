@@ -359,13 +359,16 @@ class GeminiProvider:
 
 def _usage(meta: dict[str, Any]) -> Usage:
     cached = meta.get("cachedContentTokenCount", 0) or 0
+    thinking = meta.get("thoughtsTokenCount", 0) or 0
     return Usage(
         # promptTokenCount includes cached tokens; split them out like the
         # Anthropic adapter so cost estimation treats a cache read cheaply.
         input_tokens=max((meta.get("promptTokenCount", 0) or 0) - cached, 0),
-        output_tokens=(meta.get("candidatesTokenCount", 0) or 0)
-        + (meta.get("thoughtsTokenCount", 0) or 0),
+        output_tokens=(meta.get("candidatesTokenCount", 0) or 0) + thinking,
         cache_read_input_tokens=cached,
+        # Gemini itemizes thoughts separately. It is already part of the
+        # billable output total above, so this is display-only breakdown data.
+        thinking_tokens=thinking,
     )
 
 

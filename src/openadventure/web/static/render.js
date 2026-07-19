@@ -524,6 +524,176 @@ export function stateCounts(stateValue, mode = "gm") {
   return { party, clocks };
 }
 
+function usageRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function usageNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, number) : 0;
+}
+
+function usageField(usage, name, aliases = []) {
+  for (const key of [name, ...aliases]) {
+    if (key in usage) return usageNumber(usage[key]);
+  }
+  return 0;
+}
+
+function formatUsageNumber(value) {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(usageNumber(value));
+}
+
+function formatUsageCost(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "Unavailable";
+  const digits = amount < 0.01 ? 4 : amount < 1 ? 3 : 2;
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(Math.max(0, amount));
+}
+
+function usageTokenTotal(usage) {
+  return (
+    usageField(usage, "input_tokens") +
+    usageField(usage, "cache_read_input_tokens") +
+    usageField(usage, "cache_creation_input_tokens") +
+    usageField(usage, "output_tokens")
+  );
+}
+
+function usageMetric(label, value, detail = "") {
+  const item = node("div", "usage-metric");
+  item.append(node("dt", "", label), node("dd", "", value));
+  if (detail) item.append(node("small", "", detail));
+  return item;
+}
+
+function usageBreakdownRow(label, value, note = "") {
+  const row = node("div", "usage-breakdown-row");
+  const copy = node("div");
+  copy.append(node("dt", "", label));
+  if (note) copy.append(node("small", "", note));
+  row.append(copy, node("dd", "", value));
+  return row;
+}
+
+function usageScopeCard(title, copy, rawUsage, cost) {
+  const usage = usageRecord(rawUsage);
+  const card = node("article", "usage-card");
+  const heading = node("div", "usage-card-heading");
+  const titleWrap = node("div");
+  titleWrap.append(node("h3", "", title), node("p", "", copy));
+  heading.append(titleWrap, node("span", "usage-cost", formatUsageCost(cost)));
+  card.append(heading);
+
+  const metrics = node("dl", "usage-metrics");
+  metrics.append(
+    usageMetric("Estimated token usage", formatUsageNumber(usageTokenTotal(usage))),
+    usageMetric("Estimated cost", formatUsageCost(cost), "Model list-price estimate"),
+  );
+  card.append(metrics);
+
+  const outputTokens = usageField(usage, "output_tokens");
+  const thinkingTokens = Math.min(outputTokens, usageField(usage, "thinking_tokens"));
+  const textTokens = Math.max(outputTokens - thinkingTokens, 0);
+  const breakdown = node("dl", "usage-breakdown");
+  breakdown.append(
+    usageBreakdownRow("Input", formatUsageNumber(usageField(usage, "input_tokens"))),
+    usageBreakdownRow("Cache read", formatUsageNumber(usageField(usage, "cache_read_input_tokens"))),
+    usageBreakdownRow(
+      "Cache write",
+      formatUsageNumber(usageField(usage, "cache_creation_input_tokens")),
+    ),
+    usageBreakdownRow("Output", formatUsageNumber(outputTokens)),
+    usageBreakdownRow("Text output", formatUsageNumber(textTokens), "Output excluding thinking"),
+    usageBreakdownRow("Thinking", formatUsageNumber(thinkingTokens), "Included in output"),
+  );
+
+  const media = [
+    ["Images", usageField(usage, "image_count", ["images_generated"]), "generated"],
+    ["Narration", usageField(usage, "tts_characters", ["narration_characters"]), "characters"],
+    ["Sound effects", usageField(usage, "sound_effect_seconds"), "seconds"],
+    ["Music", usageField(usage, "music_seconds"), "seconds"],
+  ];
+  for (const [label, value, unit] of media) {
+    if (value > 0) breakdown.append(usageBreakdownRow(label, `${formatUsageNumber(value)} ${unit}`));
+  }
+  card.append(breakdown);
+  return card;
+}
+
+function renderUsage(container, state) {
+  const report = usageRecord(state.usage);
+  if (!Object.keys(report).length) {
+    container.append(
+      emptyState("$", "No usage yet", "Usage estimates will appear after the first model or media request."),
+    );
+    return;
+  }
+  const session = usageRecord(report.session);
+  const totals = usageRecord(report.totals);
+  const section = node("section", "usage-panel");
+  const intro = node("div", "usage-intro");
+  intro.append(node("h3", "state-section-title", "Usage so far"));
+  intro.append(
+    node(
+      "p",
+      "",
+      "Usage reflects reported model counts where available; costs are rough list-price estimates. Thinking is billed as output and shown separately.",
+    ),
+  );
+  section.append(intro);
+
+  const scopes = node("div", "usage-scope-grid");
+  scopes.append(
+    usageScopeCard(
+      "This session",
+      "Activity since this campaign session opened.",
+      session,
+      report.session_cost_usd,
+    ),
+    usageScopeCard(
+      "Campaign total",
+      "All recorded activity for this campaign.",
+      totals,
+      report.cost_usd,
+    ),
+  );
+  section.append(scopes);
+
+  const byModel = usageRecord(report.by_model);
+  const models = Object.entries(byModel).filter(([, usage]) => usage && typeof usage === "object");
+  if (models.length) {
+    const modelSection = node("section", "usage-models");
+    modelSection.append(node("h3", "state-section-title", "By model"));
+    const list = node("dl", "usage-model-list");
+    for (const [model, modelUsage] of models) {
+      const row = node("div", "usage-model-row");
+      const modelCost = usageNumber(modelUsage.cost_usd);
+      const modelThinking = usageField(modelUsage, "thinking_tokens");
+      const copy = node("div");
+      copy.append(node("dt", "", model));
+      copy.append(
+        node(
+          "small",
+          "",
+          `${formatUsageNumber(usageTokenTotal(modelUsage))} tokens · ${formatUsageNumber(modelThinking)} thinking`,
+        ),
+      );
+      row.append(copy, node("dd", "", formatUsageCost(modelCost)));
+      list.append(row);
+    }
+    modelSection.append(list);
+    section.append(modelSection);
+  }
+
+  container.append(section);
+}
+
 export function renderInspector(container, tab, stateValue, mode = "gm") {
   const state = stateValue?.state && !stateValue.party ? stateValue.state : stateValue || {};
   container.replaceChildren();
@@ -536,6 +706,9 @@ export function renderInspector(container, tab, stateValue, mode = "gm") {
       break;
     case "clocks":
       renderClocks(container, state, mode);
+      break;
+    case "usage":
+      renderUsage(container, state);
       break;
     case "party":
     default:

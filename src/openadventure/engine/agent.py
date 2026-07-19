@@ -211,6 +211,7 @@ async def run_turn(
     while True:
         text_acc = ""
         text_deltas: list[str] = []
+        thinking_deltas: list[str] = []
         thinking: list[ThinkingBlock | RedactedThinkingBlock] = []
         tool_uses: list[PToolUse] = []
         stop: PTurnDone | None = None
@@ -222,6 +223,12 @@ async def run_turn(
                     case "text_delta":
                         text_acc += pe.text
                         text_deltas.append(pe.text)
+                    case "thinking_delta":
+                        # The final PThinking block is preferred below because
+                        # it avoids counting streamed summaries twice. Retain
+                        # deltas as a fallback for providers that never emit a
+                        # completed block with their usage metadata.
+                        thinking_deltas.append(pe.thinking)
                     case "thinking":
                         thinking.append(ThinkingBlock(thinking=pe.thinking, signature=pe.signature))
                     case "redacted_thinking":
@@ -253,7 +260,24 @@ async def run_turn(
         if text_acc.strip() and not suppress_tool_round_text:
             narration_parts.append(text_acc)
         if stop is not None:
-            total_usage = total_usage.add(stop.usage)
+            usage = stop.usage
+            if usage.thinking_tokens == 0:
+                completed_thinking = "".join(
+                    block.thinking for block in thinking if isinstance(block, ThinkingBlock)
+                )
+                estimated_thinking = est_tokens(completed_thinking or "".join(thinking_deltas))
+                if completed_thinking or thinking_deltas:
+                    # Reasoning is a subset of total output. When a provider
+                    # has no final usage at all, retain the best live estimate
+                    # rather than erasing thought work from the usage report.
+                    output_tokens = max(usage.output_tokens, estimated_thinking)
+                    usage = usage.model_copy(
+                        update={
+                            "output_tokens": output_tokens,
+                            "thinking_tokens": min(estimated_thinking, output_tokens),
+                        }
+                    )
+            total_usage = total_usage.add(usage)
         for background_event in session.background.drain():
             yield background_event
 

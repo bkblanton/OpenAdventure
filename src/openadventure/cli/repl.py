@@ -594,44 +594,94 @@ class Repl:
 
     async def _cmd_usage(self, args: str) -> None:
         report = self.session.usage_report()
-        table = Table("scope", "input", "output", "cache read", "cache write", "est. cost")
+        table = Table(
+            "scope",
+            "input",
+            "text",
+            "thinking",
+            "cache read",
+            "cache write",
+            "images",
+            "audio",
+            "est. cost",
+        )
         totals = report["totals"]
         session = report["session"]
+
+        def text_tokens(row: dict) -> int:
+            # output_tokens is the provider-billed total, including thinking.
+            return max(int(row.get("output_tokens", 0)) - int(row.get("thinking_tokens", 0)), 0)
+
+        def audio_usage(row: dict) -> str:
+            parts = []
+            if chars := row.get("tts_characters", 0):
+                parts.append(f"TTS {int(chars):,} ch")
+            if seconds := row.get("sound_effect_seconds", 0):
+                parts.append(f"SFX {float(seconds):g}s")
+            if seconds := row.get("music_seconds", 0):
+                parts.append(f"music {float(seconds):g}s")
+            return ", ".join(parts) or "â€”"
+
         table.add_row(
             "campaign",
             f"{totals['input_tokens']:,}",
-            f"{totals['output_tokens']:,}",
-            f"{totals['cache_read_input_tokens']:,}",
-            f"{totals['cache_creation_input_tokens']:,}",
+            f"{text_tokens(totals):,}",
+            f"{totals.get('thinking_tokens', 0):,}",
+            f"{totals.get('cache_read_input_tokens', 0):,}",
+            f"{totals.get('cache_creation_input_tokens', 0):,}",
+            f"{totals.get('image_count', 0):,}",
+            audio_usage(totals),
             f"${report['cost_usd']:.4f}",
         )
         table.add_row(
             "this session",
             f"{session['input_tokens']:,}",
-            f"{session['output_tokens']:,}",
-            f"{session['cache_read_input_tokens']:,}",
-            f"{session['cache_creation_input_tokens']:,}",
+            f"{text_tokens(session):,}",
+            f"{session.get('thinking_tokens', 0):,}",
+            f"{session.get('cache_read_input_tokens', 0):,}",
+            f"{session.get('cache_creation_input_tokens', 0):,}",
+            f"{session.get('image_count', 0):,}",
+            audio_usage(session),
             f"${report.get('session_cost_usd', 0.0):.4f}",
         )
         self.console.print(table)
+        breakdown = report.get("cost_breakdown", {})
+        session_breakdown = report.get("session_cost_breakdown", {})
+        if any(
+            breakdown.get(key, 0.0) for key in ("text", "images", "tts", "sound_effects", "music")
+        ):
+            costs = Table("scope", "text", "images", "TTS", "SFX", "music", "total")
+            for label, row in (("campaign", breakdown), ("this session", session_breakdown)):
+                costs.add_row(
+                    label,
+                    f"${row.get('text', 0.0):.4f}",
+                    f"${row.get('images', 0.0):.4f}",
+                    f"${row.get('tts', 0.0):.4f}",
+                    f"${row.get('sound_effects', 0.0):.4f}",
+                    f"${row.get('music', 0.0):.4f}",
+                    f"${row.get('total', 0.0):.4f}",
+                )
+            self.console.print(costs)
         by_model = report.get("by_model", {})
         if by_model:
             # Per-model breakdown: with the backend chosen by the model, a campaign
             # can span several (e.g. a cheap model for setup, a premium one at the
             # table), so show where the tokens and cost actually went.
-            per = Table("model", "input", "output", "est. cost", title="by model")
+            per = Table("model", "input", "text", "thinking", "est. cost", title="by model")
             for model_id, row in sorted(
                 by_model.items(), key=lambda kv: kv[1].get("cost_usd", 0.0), reverse=True
             ):
                 per.add_row(
                     model_id,
                     f"{row.get('input_tokens', 0):,}",
-                    f"{row.get('output_tokens', 0):,}",
+                    f"{text_tokens(row):,}",
+                    f"{row.get('thinking_tokens', 0):,}",
                     f"${row.get('cost_usd', 0.0):.4f}",
                 )
             self.console.print(per)
         self.console.print(
-            "[dim]Cost is a rough estimate from per-model list prices; cache reads bill "
+            "[dim]Text and thinking are token estimates or provider totals; output includes "
+            "thinking. Media and cost use rough built-in list-price estimates. Cache reads bill "
             "at ~10% of input. Actual billing may differ.[/dim]"
         )
         s = self.session.settings

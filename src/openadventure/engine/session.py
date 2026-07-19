@@ -115,6 +115,118 @@ def estimate_cost(usage: Usage, model: ModelInfo) -> float:
     ) / 1_000_000
 
 
+# These are deliberately small, explicit estimates for the built-in media
+# backends, not a claim that an account's invoice will match exactly. Media APIs
+# use different billing units (credits, image resolution, generated seconds),
+# and custom backends are unpriced until they can expose a reliable rate.
+_MEDIA_USD_PER_UNIT = {
+    ("image", "GeminiImageBackend", "gemini-3.1-flash-image"): 0.067,
+    ("tts", "ElevenLabsTTS", "eleven_flash_v2_5"): 0.000075,
+    ("sound_effect", "ElevenLabsSoundEffects", "eleven_text_to_sound_v2"): 0.003333,
+    ("music", "ElevenLabsMusic", "music_v1"): 0.010,
+}
+_COST_COMPONENTS = ("text", "images", "tts", "sound_effects", "music")
+_MEDIA_COMPONENTS = {
+    "image": "images",
+    "tts": "tts",
+    "sound_effect": "sound_effects",
+    "music": "music",
+}
+
+
+def empty_cost_breakdown() -> dict[str, float]:
+    """A JSON-friendly component breakdown, including its derived total."""
+
+    return {**dict.fromkeys(_COST_COMPONENTS, 0.0), "total": 0.0}
+
+
+def normalized_cost_breakdown(value: object, *, legacy_total: float = 0.0) -> dict[str, float]:
+    """Read a current or pre-media ``usage.json`` cost breakdown safely."""
+
+    raw = value if isinstance(value, dict) else {}
+    breakdown = {key: float(raw.get(key, 0.0) or 0.0) for key in _COST_COMPONENTS}
+    if not raw and legacy_total:
+        # Earlier usage files only recorded one aggregate model-token cost.
+        breakdown["text"] = float(legacy_total)
+    breakdown["total"] = round(sum(breakdown.values()), 6)
+    return breakdown
+
+
+def estimate_media_cost(
+    usage: Usage,
+    *,
+    kind: str,
+    backend_name: str,
+    model_id: str | None,
+) -> float:
+    """Estimate one completed media operation's USD cost.
+
+    Only the bundled backend/model combinations receive a rate. A custom or
+    unrecognized backend still contributes usage counters but intentionally adds
+    zero dollars rather than presenting an invented charge as a real estimate.
+    """
+
+    rate = _MEDIA_USD_PER_UNIT.get((kind, backend_name, model_id or ""), 0.0)
+    match kind:
+        case "image":
+            units = usage.image_count
+        case "tts":
+            units = usage.tts_characters
+        case "sound_effect":
+            units = usage.sound_effect_seconds
+        case "music":
+            units = usage.music_seconds
+        case _:
+            units = 0
+    return float(units) * rate
+
+
+def empty_usage_data() -> dict[str, Any]:
+    """The persisted campaign usage schema, including all optional estimates."""
+
+    return {
+        "totals": Usage().model_dump(),
+        "cost_usd": 0.0,
+        "by_model": {},
+        "cost_breakdown": empty_cost_breakdown(),
+    }
+
+
+def normalize_usage_data(raw: object) -> dict[str, Any]:
+    """Upgrade a current or legacy ``usage.json`` payload without writing it.
+
+    This is shared by live sessions and read-only browser projections, so an
+    older campaign looks complete even before its next generation call writes a
+    migrated snapshot to disk.
+    """
+
+    data = dict(raw) if isinstance(raw, dict) else empty_usage_data()
+    totals_raw = data.get("totals")
+    data["totals"] = Usage.model_validate(
+        totals_raw if isinstance(totals_raw, dict) else {}
+    ).model_dump()
+    data["cost_usd"] = float(data.get("cost_usd", 0.0) or 0.0)
+
+    by_model_raw = data.get("by_model")
+    by_model: dict[str, dict[str, Any]] = {}
+    if isinstance(by_model_raw, dict):
+        for model_id, row in by_model_raw.items():
+            if not isinstance(row, dict):
+                continue
+            normalized = Usage.model_validate(row).model_dump()
+            normalized["cost_usd"] = float(row.get("cost_usd", 0.0) or 0.0)
+            by_model[str(model_id)] = normalized
+    data["by_model"] = by_model
+    data["cost_breakdown"] = normalized_cost_breakdown(
+        data.get("cost_breakdown"), legacy_total=data["cost_usd"]
+    )
+    # The component total is canonical after migration. On an older file it
+    # equals its legacy aggregate because normalized_cost_breakdown maps that
+    # aggregate onto text.
+    data["cost_usd"] = data["cost_breakdown"]["total"]
+    return data
+
+
 @dataclass
 class RetryPlan:
     """The result of preparing a ``/retry``: the last user message to replay and
@@ -164,6 +276,9 @@ class GameSession:
         self.models = models or ModelRegistry.load_default()
         self.settings = resolve_settings(self.meta.settings, config, self.models)
         self.background = BackgroundTasks()
+        self.session_usage = Usage()
+        self.session_cost_usd = 0.0
+        self.session_cost_breakdown = empty_cost_breakdown()
         self._compacting = False  # single-flight guard for the canon chronicler
         media_backends = load_backends(config.media)
         self.images = media_backends[0]
@@ -173,7 +288,13 @@ class GameSession:
         self._apply_music_volume()
         self._apply_narrator_voice()
         self.narration = NarrationAgent(
-            campaign, self.log, self.background, self.tts, self.sound_effects, host=self.media_host
+            campaign,
+            self.log,
+            self.background,
+            self.tts,
+            self.sound_effects,
+            host=self.media_host,
+            usage_recorder=self.accrue_media_usage,
         )
         # one embedding backend per session (model load is expensive); None when
         # disabled or the optional dep is absent -> hybrid search degrades to FTS5
@@ -191,12 +312,11 @@ class GameSession:
             embed_backend=self.embed_backend,
             capabilities=self.media_capabilities,
             docs=self.docs,
+            usage_recorder=self.accrue_media_usage,
         )
 
         seed = session_seed if session_seed is not None else random.SystemRandom().randrange(2**32)
         self.rng = random.Random(seed)
-        self.session_usage = Usage()
-        self.session_cost_usd = 0.0
         self.tool_ctx = ToolContext(
             workspace=workspace,
             campaign=campaign,
@@ -206,6 +326,7 @@ class GameSession:
             background=self.background,
             narration=self.narration,
             media_host=self.media_host,
+            usage_recorder=self.accrue_media_usage,
         )
         self.log.append("session_start", {"session_seed": seed})
 
@@ -723,19 +844,29 @@ class GameSession:
 
         async def work():
             track = await backend.generate(prompt)
+            length_seconds = getattr(track, "length_seconds", None)
+            if length_seconds is None:
+                length_seconds = getattr(backend, "default_length_seconds", 0.0)
+            if length_seconds:
+                self.accrue_media_usage(
+                    Usage(music_seconds=float(length_seconds)),
+                    "music",
+                    type(backend).__name__,
+                    getattr(backend, "model_id", None),
+                )
             # Copy out of the shared temp cache into the campaign under a readable
             # name, so the track persists with the campaign and resume can replay it.
             path = await asyncio.to_thread(
                 persist_track, self.campaign.music_dir, track.path, prompt
             )
-            self.media_host.play_music(path, prompt=prompt, length_seconds=track.length_seconds)
+            self.media_host.play_music(path, prompt=prompt, length_seconds=length_seconds)
             self.log.append(
                 "media",
                 {
                     "kind": "music",
                     "prompt": prompt,
                     "path": str(path),
-                    "length_seconds": track.length_seconds,
+                    "length_seconds": length_seconds,
                     "by": by,
                 },
             )
@@ -912,6 +1043,7 @@ class GameSession:
             embed_backend=self.embed_backend,
             capabilities=self.media_capabilities,
             docs=self.docs,
+            usage_recorder=self.accrue_media_usage,
         )
         self.tool_ctx.narration = self.narration
 
@@ -1407,34 +1539,92 @@ class GameSession:
         return self.settings
 
     # --- usage / cost -------------------------------------------------------
-    def accrue_usage(self, usage: Usage) -> None:
-        self.session_usage = self.session_usage.add(usage)
-        model = self.models.get(self.settings.model)
-        cost = estimate_cost(usage, model)
-        self.session_cost_usd = round(self.session_cost_usd + cost, 6)
+    @staticmethod
+    def _empty_usage_data() -> dict[str, Any]:
+        return empty_usage_data()
 
-        data = snapshots.load_json(self.campaign.usage_path) or {
-            "totals": Usage().model_dump(),
-            "cost_usd": 0.0,
-            "by_model": {},
-        }
-        totals = Usage.model_validate(data["totals"]).add(usage)
-        data["totals"] = totals.model_dump()
-        data["cost_usd"] = round(data.get("cost_usd", 0.0) + cost, 6)
-        per = data["by_model"].setdefault(
-            self.settings.model, {**Usage().model_dump(), "cost_usd": 0.0}
+    def _usage_data(self) -> dict[str, Any]:
+        """Load usage.json and upgrade its old, token-only shape in memory."""
+
+        return normalize_usage_data(snapshots.load_json(self.campaign.usage_path))
+
+    @staticmethod
+    def _add_cost_breakdown(current: dict[str, float], delta: dict[str, float]) -> dict[str, float]:
+        updated = normalized_cost_breakdown(current)
+        for key in _COST_COMPONENTS:
+            updated[key] = round(updated[key] + float(delta.get(key, 0.0) or 0.0), 6)
+        updated["total"] = round(sum(updated[key] for key in _COST_COMPONENTS), 6)
+        return updated
+
+    def _accrue(
+        self,
+        usage: Usage,
+        *,
+        cost_delta: dict[str, float],
+        model_id: str | None = None,
+    ) -> None:
+        """Persist one completed unit of usage and update this process's view."""
+
+        self.session_usage = self.session_usage.add(usage)
+        self.session_cost_breakdown = self._add_cost_breakdown(
+            self.session_cost_breakdown, cost_delta
         )
-        merged = Usage.model_validate({k: per[k] for k in Usage.model_fields}).add(usage)
-        per.update(merged.model_dump())
-        per["cost_usd"] = round(per.get("cost_usd", 0.0) + cost, 6)
+        self.session_cost_usd = self.session_cost_breakdown["total"]
+
+        data = self._usage_data()
+        data["totals"] = Usage.model_validate(data["totals"]).add(usage).model_dump()
+        data["cost_breakdown"] = self._add_cost_breakdown(data["cost_breakdown"], cost_delta)
+        data["cost_usd"] = data["cost_breakdown"]["total"]
+
+        if model_id is not None:
+            per = data["by_model"].setdefault(model_id, {**Usage().model_dump(), "cost_usd": 0.0})
+            merged = Usage.model_validate(per).add(usage)
+            per.update(merged.model_dump())
+            per["cost_usd"] = round(per.get("cost_usd", 0.0) + cost_delta["text"], 6)
         snapshots.save_json(self.campaign.usage_path, data)
 
+    def accrue_usage(self, usage: Usage) -> None:
+        """Accrue one completed model response, with thinking already included."""
+
+        model = self.models.get(self.settings.model)
+        self._accrue(
+            usage,
+            cost_delta={"text": estimate_cost(usage, model)},
+            model_id=self.settings.model,
+        )
+
+    def accrue_media_usage(
+        self,
+        usage: Usage,
+        kind: str,
+        backend_name: str,
+        model_id: str | None,
+    ) -> None:
+        """Accrue a successful media operation from a background task callback."""
+
+        component = _MEDIA_COMPONENTS.get(kind)
+        cost = estimate_media_cost(
+            usage,
+            kind=kind,
+            backend_name=backend_name,
+            model_id=model_id,
+        )
+        self._accrue(usage, cost_delta={component: cost} if component else {})
+
     def usage_report(self) -> dict[str, Any]:
-        data = snapshots.load_json(self.campaign.usage_path) or {
-            "totals": Usage().model_dump(),
-            "cost_usd": 0.0,
-            "by_model": {},
-        }
+        """Campaign and process usage, including estimated media and cost detail."""
+
+        data = self._usage_data()
         data["session"] = self.session_usage.model_dump()
         data["session_cost_usd"] = self.session_cost_usd
+        data["session_cost_breakdown"] = self.session_cost_breakdown
+        # Additive aliases for consumers that want an explicit reminder that
+        # media rates and provider thinking splits are estimates. The legacy
+        # totals/cost_usd/session fields remain the canonical stable surface.
+        data["estimated"] = {
+            **data["totals"],
+            "cost_usd": data["cost_usd"],
+            "cost_breakdown": data["cost_breakdown"],
+        }
+        data["estimated_cost_usd"] = data["cost_usd"]
         return data

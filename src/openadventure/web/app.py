@@ -50,6 +50,7 @@ from openadventure.web.views import (
     public_history,
     sanitize_event,
     state_snapshot,
+    usage_payload,
 )
 
 STATIC_DIR = Path(__file__).with_name("static")
@@ -448,6 +449,15 @@ async def get_state(request: Request) -> Response:
     if isinstance(handle, JSONResponse):
         return handle
     return JSONResponse({"state": state_snapshot(handle.session)})
+
+
+async def get_usage(request: Request) -> Response:
+    """Return the campaign's current usage and estimated-cost report."""
+
+    handle = await _session_handle(request)
+    if isinstance(handle, JSONResponse):
+        return handle
+    return JSONResponse({"usage": usage_payload(handle.session)})
 
 
 def _library_slugs(value: Any, field: str) -> list[str]:
@@ -1028,6 +1038,7 @@ def create_app(config: AppConfig | None = None) -> Starlette:
         Route("/api/campaigns", create_campaign, methods=["POST"]),
         Route("/api/campaigns/{slug:str}", get_campaign),
         Route("/api/campaigns/{slug:str}/state", get_state),
+        Route("/api/campaigns/{slug:str}/usage", get_usage),
         Route("/api/campaigns/{slug:str}/events", poll_events),
         Route("/api/campaigns/{slug:str}/turn", run_turn, methods=["POST"]),
         Route(
