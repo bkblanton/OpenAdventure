@@ -196,6 +196,51 @@ def _web_media_payloads(handle: SessionHandle) -> list[dict[str, Any]]:
     return payloads
 
 
+def _restored_web_media(handle: SessionHandle) -> dict[str, Any]:
+    """Describe durable visual media and the active track for a fresh browser.
+
+    Live host events are intentionally transient, but generated images and music
+    are recorded under the campaign. Rebuild their safe browser-facing form from
+    that durable state whenever a campaign payload is requested.
+    """
+
+    session = handle.session
+    restored_images: list[dict[str, str]] = []
+    seen_paths: set[str] = set()
+    for entry in session.log.read_all():
+        if entry.type != "media" or entry.data.get("kind") != "image":
+            continue
+        raw_path = entry.data.get("path")
+        if not isinstance(raw_path, str) or raw_path in seen_paths:
+            continue
+        url = _media_url(session.campaign, session.meta.slug, "images", raw_path)
+        if url is None:
+            continue
+        seen_paths.add(raw_path)
+        caption = entry.data.get("caption") or entry.data.get("subject") or "Generated image"
+        restored_images.append({"path": url, "caption": str(caption)})
+
+    current_music: dict[str, Any] | None = None
+    host = session.media_host
+    if isinstance(host, WebMediaHost):
+        current_music = host.now_playing()
+        if current_music is not None and session.meta.mode == "gm":
+            # Prompts may include GM-only context. The player still receives the
+            # playable track, but not the internal selection rationale.
+            current_music["mood"] = ""
+    return {"restored_images": restored_images[-24:], "now_playing": current_music}
+
+
+def _campaign_payload(handle: SessionHandle) -> dict[str, Any]:
+    """Return a campaign payload enriched with browser-restorable media."""
+
+    payload = campaign_payload(handle.session)
+    media = payload.get("media")
+    if isinstance(media, dict):
+        media.update(_restored_web_media(handle))
+    return payload
+
+
 def _ndjson(data: dict[str, Any]) -> bytes:
     return (json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
 
@@ -372,14 +417,14 @@ async def create_campaign(request: Request) -> Response:
         return _json_error(str(exc), 409)
     except BookTypeMismatch as exc:
         return _json_error(str(exc))
-    return JSONResponse(campaign_payload(handle.session), status_code=201)
+    return JSONResponse(_campaign_payload(handle), status_code=201)
 
 
 async def get_campaign(request: Request) -> Response:
     handle = await _session_handle(request)
     if isinstance(handle, JSONResponse):
         return handle
-    return JSONResponse(campaign_payload(handle.session))
+    return JSONResponse(_campaign_payload(handle))
 
 
 async def get_state(request: Request) -> Response:
@@ -463,7 +508,7 @@ async def update_campaign_library(request: Request) -> Response:
         handle.session.meta.modules = saved_meta.modules
         handle.session.meta.active_module = saved_meta.active_module
         handle.session.reload_tools()
-    return JSONResponse(campaign_payload(handle.session))
+    return JSONResponse(_campaign_payload(handle))
 
 
 async def poll_events(request: Request) -> Response:
@@ -854,7 +899,7 @@ async def update_settings(request: Request) -> Response:
                 handle.session.reload_tools()
         except (TypeError, ValueError) as exc:
             return _json_error(str(exc))
-    return JSONResponse(campaign_payload(handle.session))
+    return JSONResponse(_campaign_payload(handle))
 
 
 async def save_credential(request: Request) -> Response:
@@ -886,7 +931,7 @@ async def save_credential(request: Request) -> Response:
             handle.session.reload_tools()
         except (OSError, ValueError) as exc:
             return _json_error(str(exc))
-    return JSONResponse(campaign_payload(handle.session))
+    return JSONResponse(_campaign_payload(handle))
 
 
 async def campaign_media(request: Request) -> Response:

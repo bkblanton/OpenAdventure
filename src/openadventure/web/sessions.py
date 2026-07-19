@@ -43,6 +43,7 @@ class WebMediaHost:
         self._events: deque[dict[str, Any]] = deque()
         self._audio: OrderedDict[str, Path] = OrderedDict()
         self._lock = threading.Lock()
+        self._music_url: str | None = None
         self._music_prompt: str | None = None
         self._music_length: float | None = None
         self._music_volume = max(0.0, min(1.0, float(music_volume)))
@@ -103,6 +104,7 @@ class WebMediaHost:
         if url is None:
             return
         with self._lock:
+            self._music_url = url
             self._music_prompt = prompt
             self._music_length = length_seconds
             self._events.append(
@@ -116,9 +118,21 @@ class WebMediaHost:
 
     def stop_music(self) -> None:
         with self._lock:
+            self._music_url = None
             self._music_prompt = None
             self._music_length = None
             self._events.append({"type": "music_stopped"})
+
+    def now_playing(self) -> dict[str, Any] | None:
+        """Return the current browser-playable track for a fresh page load."""
+        with self._lock:
+            if self._music_url is None:
+                return None
+            return {
+                "track": self._music_url,
+                "mood": self._music_prompt or "",
+                "length_seconds": self._music_length,
+            }
 
     def set_music_volume(self, value: float) -> float:
         volume = max(0.0, min(1.0, float(value)))
@@ -314,5 +328,9 @@ class SessionManager:
         api_key = resolve_api_key(self.config, provider_name)
         if api_key:
             session.provider = build_provider(provider_name, api_key, session.models)
-        session.resume_music()
+        # The browser owns playback, so a freshly opened web session must expose
+        # the last persisted track even when this campaign is not using automatic
+        # GM scoring.  This only reuses the saved local file and never regenerates.
+        if session.meta.music_enabled:
+            session.replay_music()
         return session
