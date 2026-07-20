@@ -16,6 +16,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 
+from openadventure.character_import import IMPORT_MAX_CHARS, prepare_character_import
 from openadventure.cli.firstrun import ensure_elevenlabs_api_key, ensure_google_api_key
 from openadventure.cli.render import EventRenderer
 from openadventure.engine import commands
@@ -45,28 +46,6 @@ class SlashCompleter(Completer):
             if name.startswith(text):
                 yield Completion(name, start_position=-len(text))
 
-
-_IMPORT_SUFFIXES = (".md", ".markdown", ".txt", ".text", ".json")
-
-# Out-of-character instruction handed to the AI so it transcribes a free-form
-# character file into a sheet via create_sheet, following the system source's template.
-# Kept here (not in the agent) because importing is a frontend convenience, not
-# part of the play loop.
-_IMPORT_INSTRUCTION = (
-    "[OUT-OF-CHARACTER: The player is importing an existing character sheet from a "
-    "file. Read the character described below and create a player-character sheet for "
-    "them by calling create_sheet, following this campaign's character template as "
-    "closely as the source allows. Transcribe every name, class/role, level, ability "
-    "score, skill, item, and numeric resource (hp and the like) you can find; map them "
-    "onto the template and keep anything that doesn't fit under fields. Do not invent "
-    "details the source doesn't provide. After the sheet exists, briefly confirm what "
-    "you imported and note anything that was missing or couldn't be mapped.\n\n"
-    "--- IMPORTED CHARACTER SHEET ({filename}) ---\n{content}\n"
-    "--- END IMPORTED CHARACTER SHEET ---]"
-)
-# A character sheet is small; cap the slice we feed the AI so a stray large file
-# can't blow up the turn.
-_IMPORT_MAX_CHARS = 40_000
 
 # Out-of-character framing for /btw, a quick "by the way" aside to the GM. The
 # turn runs but isn't logged, so the GM is told to answer directly and not fold
@@ -388,7 +367,6 @@ class Repl:
         via create_sheet, following the campaign's character template, so the
         import is system-agnostic, just like sheets the GM creates in play.
         """
-        import json
         from pathlib import Path
 
         usage = (
@@ -408,42 +386,28 @@ class Repl:
         if not source.is_file():
             self.console.print(f"[red]No such file: {source}[/red]")
             return
-        if source.suffix.lower() not in _IMPORT_SUFFIXES:
-            self.console.print(
-                f"[red]Unsupported file type {source.suffix or '(none)'!r}; "
-                "import a .md, .txt, or .json file.[/red]"
-            )
-            return
         try:
             content = source.read_text(encoding="utf-8", errors="replace").strip()
         except OSError as exc:
             self.console.print(f"[red]Couldn't read {source.name}: {exc}[/red]")
             return
-        if not content:
-            self.console.print(f"[yellow]{source.name} is empty; nothing to import.[/yellow]")
+        try:
+            instruction, truncated = prepare_character_import(source.name, content)
+        except ValueError as exc:
+            self.console.print(f"[red]{exc}[/red]")
             return
-        # For JSON, validate it parses and pretty-print it so the AI sees clean,
-        # well-structured data rather than a minified blob.
-        if source.suffix.lower() == ".json":
-            try:
-                content = json.dumps(json.loads(content), indent=2, ensure_ascii=False)
-            except (json.JSONDecodeError, ValueError) as exc:
-                self.console.print(f"[red]{source.name} isn't valid JSON: {exc}[/red]")
-                return
         if self.session.provider is None:
             self.console.print(
                 "[red]Importing a sheet needs an AI provider: set ANTHROPIC_API_KEY "
                 "(env or .env) and restart.[/red]"
             )
             return
-        if len(content) > _IMPORT_MAX_CHARS:
-            content = content[:_IMPORT_MAX_CHARS]
+        if truncated:
             self.console.print(
                 f"[yellow]{source.name} is large; importing only the first "
-                f"{_IMPORT_MAX_CHARS:,} characters.[/yellow]"
+                f"{IMPORT_MAX_CHARS:,} characters.[/yellow]"
             )
         self.console.print(f"[dim]Importing character from [bold]{source.name}[/bold]…[/dim]")
-        instruction = _IMPORT_INSTRUCTION.format(filename=source.name, content=content)
         await self.handle_player_input(instruction)
 
     async def _cmd_party(self, args: str) -> None:

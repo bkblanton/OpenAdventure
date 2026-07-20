@@ -24,6 +24,11 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from openadventure.character_import import (
+    IMPORT_MAX_BYTES,
+    IMPORT_SUFFIXES,
+    prepare_character_import,
+)
 from openadventure.config import AppConfig, load_config, save_local_api_key
 from openadventure.engine.events import EngineEvent, RollResult
 from openadventure.engine.session import resolve_settings
@@ -94,7 +99,11 @@ class LocalMutationGuard:
         if scope["type"] == "http" and scope["method"] in ("POST", "PUT", "PATCH", "DELETE"):
             headers = {key.lower(): value for key, value in scope.get("headers", [])}
             content_type = headers.get(b"content-type", b"").decode("latin-1")
-            is_upload = scope["method"] == "POST" and scope.get("path") == "/api/library/ingest"
+            path = scope.get("path", "")
+            is_upload = scope["method"] == "POST" and (
+                path == "/api/library/ingest"
+                or (path.startswith("/api/campaigns/") and path.endswith("/import"))
+            )
             expected_type = "application/octet-stream" if is_upload else "application/json"
             if content_type.partition(";")[0].strip().lower() != expected_type:
                 response = JSONResponse(
@@ -106,7 +115,7 @@ class LocalMutationGuard:
 
             if is_upload and b"x-openadventure-filename" not in headers:
                 response = JSONResponse(
-                    {"error": "Library uploads require the OpenAdventure filename header."},
+                    {"error": "Uploads require the OpenAdventure filename header."},
                     status_code=403,
                 )
                 await response(scope, receive, send)
@@ -683,6 +692,51 @@ async def run_turn(request: Request) -> Response:
     return await _stream_events(handle, source, on_start=handle.session.interrupt_narration)
 
 
+async def import_character(request: Request) -> Response:
+    """Import a text-based character sheet through the campaign's GM agent."""
+
+    handle = await _session_handle(request)
+    if isinstance(handle, JSONResponse):
+        return handle
+    if handle.session.provider is None:
+        return _json_error("Connect an AI provider before importing a character sheet.", 409)
+
+    encoded_filename = request.headers.get("x-openadventure-filename", "")
+    filename = Path(unquote(encoded_filename)).name
+    if not filename or "\x00" in filename:
+        return _json_error("Choose a character sheet to import.")
+    if Path(filename).suffix.casefold() not in IMPORT_SUFFIXES:
+        return _json_error("Import a .md, .txt, or .json character sheet.", 415)
+
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > IMPORT_MAX_BYTES:
+                return _json_error("Character sheets must be 160 KB or smaller.", 413)
+        except ValueError:
+            return _json_error("Upload size could not be read.")
+
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > IMPORT_MAX_BYTES:
+            return _json_error("Character sheets must be 160 KB or smaller.", 413)
+        chunks.append(chunk)
+
+    try:
+        content = b"".join(chunks).decode("utf-8", errors="replace")
+        instruction, _truncated = prepare_character_import(filename, content)
+    except ValueError as exc:
+        return _json_error(str(exc))
+
+    async def source() -> AsyncIterator[EngineEvent]:
+        async for engine_event in handle.session.handle_input(instruction):
+            yield engine_event
+
+    return await _stream_events(handle, source, on_start=handle.session.interrupt_narration)
+
+
 async def _locked_json_action(
     handle: SessionHandle, action: Callable[[], dict[str, Any]]
 ) -> Response:
@@ -1041,6 +1095,7 @@ def create_app(config: AppConfig | None = None) -> Starlette:
         Route("/api/campaigns/{slug:str}/usage", get_usage),
         Route("/api/campaigns/{slug:str}/events", poll_events),
         Route("/api/campaigns/{slug:str}/turn", run_turn, methods=["POST"]),
+        Route("/api/campaigns/{slug:str}/import", import_character, methods=["POST"]),
         Route(
             "/api/campaigns/{slug:str}/actions/{action:str}",
             campaign_action,

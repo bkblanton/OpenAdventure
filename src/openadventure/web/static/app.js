@@ -40,6 +40,7 @@ const dom = {
   composerInput: $("composer-input"),
   sendButton: $("send-button"),
   cancelButton: $("cancel-turn-button"),
+  characterImportFile: $("character-import-file"),
   composerHint: $("composer-hint"),
   quietControl: $("quiet-control"),
   quietCheckbox: $("quiet-checkbox"),
@@ -146,6 +147,7 @@ const shortcuts = [
   { command: "/retry", template: "/retry", description: "Retry the last turn" },
   { command: "/recap", template: "/recap", description: "Recall the story so far" },
   { command: "/compact", template: "/compact", description: "Update the rolling story summary" },
+  { command: "/import", template: "/import", description: "Import a character sheet file" },
   { command: "/library", template: "/library", description: "Manage books for this campaign" },
   { command: "/ingest", template: "/ingest", description: "Add a rule source or adventure module" },
   { command: "/template", template: "/template ", description: "Derive a character sheet template" },
@@ -1652,6 +1654,35 @@ async function sendTurn(text, kind = store.messageKind, quiet = false) {
   );
 }
 
+function openCharacterImport() {
+  if (store.busy) {
+    toast("Wait for the current turn to finish.");
+    return;
+  }
+  if (connectionInfo().connected === false) {
+    toast("Connect an AI provider before importing a character sheet.", "error");
+    openSettings();
+    return;
+  }
+  dom.characterImportFile.value = "";
+  dom.characterImportFile.click();
+}
+
+async function importCharacter(file) {
+  if (!file) return;
+  const suffix = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] || "";
+  if (![".md", ".markdown", ".txt", ".text", ".json"].includes(suffix)) {
+    toast("Import a .md, .txt, or .json character sheet.", "error");
+    return;
+  }
+  appendTranscript(systemMessage(`Importing character from ${file.name}…`), {
+    forceScroll: true,
+  });
+  await executeStream("Importing character sheet…", (onEvent, signal) =>
+    api.importCharacter(store.slug, file, onEvent, { signal }),
+  );
+}
+
 async function cancelTurn() {
   if (!store.busy || !store.slug) return;
   try {
@@ -1770,6 +1801,9 @@ async function handleShortcut(text) {
       return true;
     case "/compact":
       await runCompact();
+      return true;
+    case "/import":
+      openCharacterImport();
       return true;
     case "/library":
       await openLibrary();
@@ -2415,10 +2449,18 @@ document.querySelectorAll(".quick-action").forEach((button) => {
       case "recap":
         runRecap();
         break;
+      case "import":
+        openCharacterImport();
+        break;
       default:
         break;
     }
   });
+});
+
+dom.characterImportFile.addEventListener("change", () => {
+  const [file] = dom.characterImportFile.files || [];
+  importCharacter(file);
 });
 
 dom.composerForm.addEventListener("submit", async (event) => {

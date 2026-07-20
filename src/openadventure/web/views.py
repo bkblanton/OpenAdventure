@@ -14,6 +14,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from openadventure.character_import import IMPORT_PREFIX
 from openadventure.config import AppConfig
 from openadventure.engine.events import EngineEvent
 from openadventure.engine.session import (
@@ -416,7 +417,9 @@ def _history_entry(entry: LogEntry, mode: Mode) -> dict[str, Any] | None:
         # The one-time campaign opening instruction is a logged engine prompt,
         # not table dialogue. Preserve it for context and CLI recovery, but let
         # the browser transcript begin with the Game Master's welcome.
-        if entry.type == "user_message" and text.startswith(_CAMPAIGN_KICKOFF_PREFIX):
+        if entry.type == "user_message" and text.startswith(
+            (_CAMPAIGN_KICKOFF_PREFIX, IMPORT_PREFIX)
+        ):
             return None
         sudo = bool(entry.data.get("sudo"))
         if sudo and mode == "gm":

@@ -209,6 +209,88 @@ async def test_turn_stream_is_valid_ndjson_from_fake_provider(web_client):
     assert events[-1]["state"]["meta"]["slug"] == "stream-test"
 
 
+async def test_character_import_streams_an_ai_turn(web_client, monkeypatch):
+    app, client = web_client
+    campaign = app.state.workspace.create_campaign("Import Test")
+    handle = await app.state.sessions.get(campaign.load_meta().slug)
+    handle.session.provider = FakeProvider(script=[])
+    captured: list[str] = []
+
+    async def handle_input(text: str, **_kwargs: object) -> AsyncIterator[EngineEvent]:
+        captured.append(text)
+        yield TurnStarted(turn_id="import-turn")
+        yield TurnCompleted(turn_id="import-turn")
+
+    monkeypatch.setattr(handle.session, "handle_input", handle_input)
+
+    response = await client.post(
+        "/api/campaigns/import-test/import",
+        content=b'{"name":"Thorin","class":"Fighter","hp":28}',
+        headers={
+            "content-type": "application/octet-stream",
+            "x-openadventure-filename": "thorin.json",
+        },
+    )
+
+    assert response.status_code == 200
+    assert [event["type"] for event in _ndjson(response)] == [
+        "turn_started",
+        "turn_completed",
+        "state_snapshot",
+    ]
+    assert len(captured) == 1
+    assert "create_sheet" in captured[0]
+    assert '"name": "Thorin"' in captured[0]
+
+
+async def test_character_import_validates_uploads(web_client):
+    app, client = web_client
+    campaign = app.state.workspace.create_campaign("Import Validation")
+    handle = await app.state.sessions.get(campaign.load_meta().slug)
+    handle.session.provider = FakeProvider(script=[])
+
+    invalid_json = await client.post(
+        "/api/campaigns/import-validation/import",
+        content=b'{"name":',
+        headers={
+            "content-type": "application/octet-stream",
+            "x-openadventure-filename": "broken.json",
+        },
+    )
+    unsupported = await client.post(
+        "/api/campaigns/import-validation/import",
+        content=b"not a supported character sheet",
+        headers={
+            "content-type": "application/octet-stream",
+            "x-openadventure-filename": "hero.pdf",
+        },
+    )
+
+    assert invalid_json.status_code == 400
+    assert "valid JSON" in invalid_json.json()["error"]
+    assert unsupported.status_code == 415
+    assert ".md" in unsupported.json()["error"]
+
+
+async def test_import_instruction_is_hidden_from_browser_history(web_client):
+    app, client = web_client
+    campaign = app.state.workspace.create_campaign("Imported Hero")
+    log = EventLog(campaign.log_path)
+    log.append(
+        "user_message",
+        {
+            "text": "[OUT-OF-CHARACTER: The player is importing an existing character sheet "
+            "from a file. secret source text]"
+        },
+    )
+    log.append("gm_message", {"text": "Imported Thorin."})
+
+    response = await client.get("/api/campaigns/imported-hero")
+
+    assert response.status_code == 200
+    assert [entry["text"] for entry in response.json()["history"]] == ["Imported Thorin."]
+
+
 async def test_retry_stream_rewinds_history_before_replaying_turn(web_client):
     app, client = web_client
     campaign = app.state.workspace.create_campaign("Retry Test")

@@ -67,8 +67,9 @@ async function streamRequest(path, body, onEvent, options = {}) {
       headers: {
         ...JSON_HEADERS,
         Accept: "application/x-ndjson, application/json",
+        ...(options.headers || {}),
       },
-      body: JSON.stringify(body ?? {}),
+      body: options.body ?? JSON.stringify(body ?? {}),
       signal: options.signal,
     });
   } catch (error) {
@@ -143,6 +144,17 @@ export const api = {
 
   turn(slug, payload, onEvent, options = {}) {
     return streamRequest(campaignPath(slug, "/turn"), payload, onEvent, options);
+  },
+
+  importCharacter(slug, file, onEvent, options = {}) {
+    return streamRequest(campaignPath(slug, "/import"), null, onEvent, {
+      ...options,
+      body: file,
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-OpenAdventure-Filename": encodeURIComponent(file.name),
+      },
+    });
   },
 
   roll(slug, expression) {
