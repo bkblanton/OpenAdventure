@@ -146,6 +146,24 @@ async def test_homepage_and_static_assets_are_served(web_client):
     assert script.text.strip()
 
 
+async def test_campaign_kickoff_instruction_is_hidden_from_browser_history(web_client):
+    app, client = web_client
+    campaign = app.state.workspace.create_campaign("Opening Scene")
+    log = EventLog(campaign.log_path)
+    log.append("user_message", {"text": "[START OF CAMPAIGN. Internal GM setup note.]"})
+    log.append("gm_message", {"text": "Welcome to the adventure."})
+
+    response = await client.get("/api/campaigns/opening-scene")
+
+    assert response.status_code == 200
+    history = response.json()["history"]
+    assert len(history) == 1
+    assert history[0]["seq"] == 2
+    assert history[0]["type"] == "gm_message"
+    assert history[0]["role"] == "assistant"
+    assert history[0]["text"] == "Welcome to the adventure."
+
+
 async def test_turn_stream_is_valid_ndjson_from_fake_provider(web_client):
     app, client = web_client
     campaign = app.state.workspace.create_campaign("Stream Test")
