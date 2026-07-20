@@ -609,9 +609,13 @@ a:focus-visible {
   font-weight: 500;
 }
 
-.story-empty > p:last-child {
+.story-empty > p:not(.eyebrow) {
   margin: 9px auto 0;
   color: var(--ink-muted);
+}
+
+.story-empty > .button {
+  margin-top: 20px;
 }
 
 .message {

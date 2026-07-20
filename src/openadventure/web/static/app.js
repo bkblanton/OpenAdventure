@@ -33,6 +33,10 @@ const dom = {
   transcriptScroll: $("transcript-scroll"),
   transcript: $("transcript"),
   storyEmpty: $("story-empty"),
+  storyEmptyEyebrow: $("story-empty-eyebrow"),
+  storyEmptyTitle: $("story-empty-title"),
+  storyEmptyCopy: $("story-empty-copy"),
+  campaignKickoffButton: $("campaign-kickoff-button"),
   jumpLatest: $("jump-latest"),
   turnStatus: $("turn-status"),
   turnStatusText: $("turn-status-text"),
@@ -350,7 +354,16 @@ function renderHistory(history = store.history) {
     }
   }
 
-  if (!visible) dom.transcript.append(dom.storyEmpty);
+  if (!visible) {
+    const assistantMode = store.campaign?.mode === "assistant";
+    dom.storyEmptyEyebrow.textContent = "Before the adventure";
+    dom.storyEmptyTitle.textContent = assistantMode ? "Prepare your table" : "Prepare your campaign";
+    dom.storyEmptyCopy.textContent = assistantMode
+      ? "Finish choosing the rules, adventure, and settings, then gather the party's characters. When everyone is ready, begin the game as GM and ask the assistant for support as needed."
+      : "Finish choosing the rules, adventure, and settings. When you are ready, the GM will introduce the premise and help the party create or import characters. Play begins only when everyone says they are ready.";
+    dom.campaignKickoffButton.hidden = assistantMode;
+    dom.transcript.append(dom.storyEmpty);
+  }
   dom.jumpLatest.hidden = true;
   window.requestAnimationFrame(() => scrollToLatest("auto"));
 }
@@ -1654,6 +1667,18 @@ async function sendTurn(text, kind = store.messageKind, quiet = false) {
   );
 }
 
+async function kickoffCampaign() {
+  if (store.busy) return;
+  if (connectionInfo().connected === false) {
+    toast("Connect an AI provider before meeting the Game Master.", "error");
+    openSettings();
+    return;
+  }
+  await executeStream("The GM is preparing the table…", (onEvent, signal) =>
+    api.kickoff(store.slug, onEvent, { signal }),
+  );
+}
+
 function openCharacterImport() {
   if (store.busy) {
     toast("Wait for the current turn to finish.");
@@ -2462,6 +2487,8 @@ dom.characterImportFile.addEventListener("change", () => {
   const [file] = dom.characterImportFile.files || [];
   importCharacter(file);
 });
+
+dom.campaignKickoffButton.addEventListener("click", kickoffCampaign);
 
 dom.composerForm.addEventListener("submit", async (event) => {
   event.preventDefault();

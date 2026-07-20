@@ -146,6 +146,10 @@ export const api = {
     return streamRequest(campaignPath(slug, "/turn"), payload, onEvent, options);
   },
 
+  kickoff(slug, onEvent, options = {}) {
+    return streamRequest(campaignPath(slug, "/actions/kickoff"), {}, onEvent, options);
+  },
+
   importCharacter(slug, file, onEvent, options = {}) {
     return streamRequest(campaignPath(slug, "/import"), null, onEvent, {
       ...options,

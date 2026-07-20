@@ -132,6 +132,9 @@ async def test_homepage_and_static_assets_are_served(web_client):
     assert homepage.headers["content-type"].startswith("text/html")
     assert "OpenAdventure" in homepage.text
     assert 'id="app"' in homepage.text
+    assert "Prepare your campaign" in homepage.text
+    assert "Play begins only when everyone says they are ready." in homepage.text
+    assert "The story begins here" not in homepage.text
 
     stylesheet = await client.get("/static/styles.css")
     assert stylesheet.status_code == 200
@@ -162,6 +165,49 @@ async def test_campaign_kickoff_instruction_is_hidden_from_browser_history(web_c
     assert history[0]["type"] == "gm_message"
     assert history[0]["role"] == "assistant"
     assert history[0]["text"] == "Welcome to the adventure."
+
+
+async def test_campaign_kickoff_streams_cli_session_zero_flow(web_client, monkeypatch):
+    app, client = web_client
+    campaign = app.state.workspace.create_campaign("Fresh Table")
+    handle = await app.state.sessions.get(campaign.load_meta().slug)
+    handle.session.provider = FakeProvider(script=[])
+    captured: list[str] = []
+
+    async def handle_input(text: str, **_kwargs: object) -> AsyncIterator[EngineEvent]:
+        captured.append(text)
+        yield TurnStarted(turn_id="kickoff-turn")
+        yield TurnCompleted(turn_id="kickoff-turn")
+
+    monkeypatch.setattr(handle.session, "handle_input", handle_input)
+
+    response = await client.post("/api/campaigns/fresh-table/actions/kickoff", json={})
+
+    assert response.status_code == 200
+    assert [event["type"] for event in _ndjson(response)] == [
+        "turn_started",
+        "turn_completed",
+        "state_snapshot",
+    ]
+    assert len(captured) == 1
+    assert "START OF CAMPAIGN" in captured[0]
+    assert "premise" in captured[0].lower()
+    assert "/import" in captured[0]
+    assert "pre-generated" in captured[0]
+    assert "Do NOT create any sheets" in captured[0]
+
+
+async def test_campaign_kickoff_rejects_campaign_that_has_started(web_client):
+    app, client = web_client
+    campaign = app.state.workspace.create_campaign("Ongoing Table")
+    EventLog(campaign.log_path).append("gm_message", {"text": "Welcome, travelers."})
+    handle = await app.state.sessions.get(campaign.load_meta().slug)
+    handle.session.provider = FakeProvider(script=[])
+
+    response = await client.post("/api/campaigns/ongoing-table/actions/kickoff", json={})
+
+    assert response.status_code == 409
+    assert "already started" in response.json()["error"]
 
 
 async def test_turn_stream_is_valid_ndjson_from_fake_provider(web_client):

@@ -31,8 +31,10 @@ from openadventure.character_import import (
 )
 from openadventure.config import AppConfig, load_config, save_local_api_key
 from openadventure.engine.events import EngineEvent, RollResult
+from openadventure.engine.kickoff import CAMPAIGN_KICKOFF_INSTRUCTION
 from openadventure.engine.session import resolve_settings
 from openadventure.mechanics.dice import DiceError
+from openadventure.store.sheetstore import SheetStore
 from openadventure.store.workspace import (
     BookTypeMismatch,
     Campaign,
@@ -692,6 +694,29 @@ async def run_turn(request: Request) -> Response:
     return await _stream_events(handle, source, on_start=handle.session.interrupt_narration)
 
 
+async def kickoff_campaign(request: Request) -> Response:
+    """Let the GM open a fresh campaign with a short session-zero turn."""
+
+    handle = await _session_handle(request)
+    if isinstance(handle, JSONResponse):
+        return handle
+    session = handle.session
+    if session.meta.mode != "gm":
+        return _json_error("Campaign kickoff is only available in AI Game Master mode.", 409)
+    if session.provider is None:
+        return _json_error("Connect an AI provider before meeting the Game Master.", 409)
+    if any(entry.type in ("user_message", "gm_message") for entry in session.log.read_all()):
+        return _json_error("This campaign has already started.", 409)
+    if SheetStore(session.campaign).party():
+        return _json_error("This campaign already has a party. Begin by talking to the GM.", 409)
+
+    async def source() -> AsyncIterator[EngineEvent]:
+        async for engine_event in session.handle_input(CAMPAIGN_KICKOFF_INSTRUCTION):
+            yield engine_event
+
+    return await _stream_events(handle, source, on_start=session.interrupt_narration)
+
+
 async def import_character(request: Request) -> Response:
     """Import a text-based character sheet through the campaign's GM agent."""
 
@@ -1095,6 +1120,11 @@ def create_app(config: AppConfig | None = None) -> Starlette:
         Route("/api/campaigns/{slug:str}/usage", get_usage),
         Route("/api/campaigns/{slug:str}/events", poll_events),
         Route("/api/campaigns/{slug:str}/turn", run_turn, methods=["POST"]),
+        Route(
+            "/api/campaigns/{slug:str}/actions/kickoff",
+            kickoff_campaign,
+            methods=["POST"],
+        ),
         Route("/api/campaigns/{slug:str}/import", import_character, methods=["POST"]),
         Route(
             "/api/campaigns/{slug:str}/actions/{action:str}",
