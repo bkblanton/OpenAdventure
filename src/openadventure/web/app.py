@@ -911,8 +911,6 @@ async def update_settings(request: Request) -> Response:
         "sound_effects_enabled",
         "music_enabled",
         "images_enabled",
-        "music_auto",
-        "images_auto",
     }
     allowed = generation_keys | media_bool_keys | {"mode", "music_volume"}
     unknown = set(body) - allowed
@@ -948,9 +946,6 @@ async def update_settings(request: Request) -> Response:
 
             proposed = dict(handle.session.meta.settings)
             proposed.update({key: body[key] for key in generation_keys if key in body})
-            proposed.update(
-                {key: body[key] for key in ("music_auto", "images_auto") if key in body}
-            )
             if "music_volume" in body:
                 proposed["music_volume"] = float(body["music_volume"])
             settings = resolve_settings(proposed, handle.session.config, handle.session.models)

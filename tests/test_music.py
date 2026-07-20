@@ -57,7 +57,6 @@ def _registry(music) -> ToolRegistry:
 def _enable_fake_auto_music(session, music: FakeMusicBackend | None = None) -> FakeMusicBackend:
     music = music or FakeMusicBackend()
     session.meta.music_enabled = True
-    session.meta.settings["music_auto"] = True
     session.music = music
     session.tools = build_registry(
         session.workspace,
@@ -173,11 +172,10 @@ async def test_music_toggle_controls_tools_and_prompt(make_session):
     session.set_music_enabled(True)
     assert session.campaign.load_meta().music_enabled
     assert "play_music" in session.tools
-    assert "Background music: enabled (auto)" in session.build_system()[0].text
+    assert "Background music: enabled. Proactively" in session.build_system()[0].text
 
-    session.set_music_auto(False)
-    assert "Background music: enabled (manual)" in session.build_system()[0].text
-    session.set_music_auto(True)
+    session.meta.settings["music_auto"] = False
+    assert "Background music: enabled. Proactively" in session.build_system()[0].text
 
     await collect(session.handle_input("more"))
     second_tools = {tool.name for tool in session.provider.calls[1].tools}
@@ -211,7 +209,7 @@ async def test_auto_music_check_after_scene_change(make_session):
     assert any("call play_music now" in text for text in hints)
 
 
-async def test_auto_music_check_skipped_in_manual_mode(make_session):
+async def test_auto_music_check_ignores_legacy_manual_setting(make_session):
     session = make_session(
         script=[
             [
@@ -231,7 +229,7 @@ async def test_auto_music_check_skipped_in_manual_mode(make_session):
     await collect(session.handle_input("we head into the tavern"))
 
     hints = _text_blocks_from_second_call(session)
-    assert all("auto music check" not in text for text in hints)
+    assert any("auto music check" in text for text in hints)
 
 
 async def test_auto_music_check_after_combat_ends(make_session, campaign):
@@ -270,6 +268,7 @@ def test_assistant_mode_music_prompt(make_session):
     session.set_music_enabled(True)
     text = session.build_system()[0].text
     assert "when the GM asks" in text
+    assert "Proactively keep a looping music bed" not in text
 
 
 def test_session_context_block_shows_now_playing(make_session):
@@ -434,14 +433,15 @@ def test_close_alone_does_not_block_resume(make_session, tmp_path):
     assert host.music[-1] == (str(path), "warm tavern folk tune")
 
 
-def test_resume_music_skips_when_auto_off(make_session, tmp_path):
+def test_resume_music_ignores_legacy_manual_setting(make_session, tmp_path):
     host = FakeMediaHost()
     session = make_session(script=[], media_host=host)
     _enable_fake_auto_music(session)
     session.meta.settings["music_auto"] = False
     _logged_track(session, tmp_path, "warm tavern folk tune")
 
-    assert session.resume_music() is None
+    assert session.resume_music() == "warm tavern folk tune"
+    assert host.music[-1][1] == "warm tavern folk tune"
 
 
 def test_resume_music_skips_without_prior_music(make_session):
@@ -452,9 +452,9 @@ def test_resume_music_skips_without_prior_music(make_session):
     assert session.resume_music() is None
 
 
-def test_replay_music_ignores_auto_and_mode_gates(make_session, tmp_path):
-    # /music resume calls replay_music directly: a manual replay should work even
-    # with auto music off, as long as the host can play and a track is on disk.
+def test_replay_music_ignores_mode_gates(make_session, tmp_path):
+    # /music resume calls replay_music directly, so a manual replay works as long
+    # as the host can play and a track is on disk.
     host = FakeMediaHost()
     session = make_session(script=[], media_host=host)
     _enable_fake_auto_music(session)

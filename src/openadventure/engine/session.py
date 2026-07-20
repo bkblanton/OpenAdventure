@@ -766,20 +766,6 @@ class GameSession:
         self.campaign.save_meta(self.meta)
         self.reload_tools()
 
-    def images_auto(self) -> bool:
-        return bool(self.meta.settings.get("images_auto", True))
-
-    def set_images_auto(self, enabled: bool) -> None:
-        self.meta.settings["images_auto"] = bool(enabled)
-        self.campaign.save_meta(self.meta)
-
-    def music_auto(self) -> bool:
-        return bool(self.meta.settings.get("music_auto", True))
-
-    def set_music_auto(self, enabled: bool) -> None:
-        self.meta.settings["music_auto"] = bool(enabled)
-        self.campaign.save_meta(self.meta)
-
     def set_music_volume(self, value: float) -> float:
         volume = self.media_host.set_music_volume(float(value))
         self.meta.settings["music_volume"] = volume
@@ -889,17 +875,12 @@ class GameSession:
         return prompt
 
     def resume_music(self) -> str | None:
-        """When resuming a campaign with auto music on, replay the track that was
+        """When resuming a GM campaign with music on, replay the track that was
         last playing from disk so the scene isn't silent until the next music cue.
         Replays the rendered file rather than regenerating it, so resuming is free
         and instant. Returns the resumed track's prompt, or None when nothing was
         replayed."""
-        if (
-            self.meta.mode != "gm"
-            or not self.meta.music_enabled
-            or not self.music_auto()
-            or "play_music" not in self.tools
-        ):
+        if self.meta.mode != "gm" or not self.meta.music_enabled or "play_music" not in self.tools:
             return None
         return self.replay_music()
 

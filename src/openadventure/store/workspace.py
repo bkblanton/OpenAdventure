@@ -212,6 +212,10 @@ class Campaign:
             if legacy and not data.get("sources"):
                 data["sources"] = [legacy]
                 data.setdefault("system_source", legacy)
+        settings = data.get("settings")
+        if isinstance(settings, dict):
+            settings.pop("images_auto", None)
+            settings.pop("music_auto", None)
         return CampaignMeta.model_validate(data)
 
     def save_meta(self, meta: CampaignMeta) -> None:

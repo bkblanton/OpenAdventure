@@ -185,10 +185,9 @@ def build_system(meta: CampaignMeta, workspace: Workspace | None = None) -> list
     else:
         parts.append("- Sound effects: disabled. Do not attempt to create sound effects.")
     if meta.music_enabled:
-        music_auto = bool(meta.settings.get("music_auto", True))
-        if meta.mode == "gm" and music_auto:
+        if meta.mode == "gm":
             parts.append(
-                "- Background music: enabled (auto). Proactively keep a looping music bed "
+                "- Background music: enabled. Proactively keep a looping music bed "
                 "that matches the scene with play_music: set one when play begins, and "
                 "change it when the location or mood shifts meaningfully (entering or ending "
                 "combat, a tavern, a tense reveal). Reassess after update_scene, "
@@ -201,13 +200,6 @@ def build_system(meta: CampaignMeta, workspace: Workspace | None = None) -> list
                 "silently: never narrate or comment on music decisions (no 'the music fits "
                 "the mood', no announcing a change) unless the player asks out of character."
             )
-        elif meta.mode == "gm":
-            parts.append(
-                "- Background music: enabled (manual). Use play_music and stop_music "
-                "only when the player asks for music out of character. "
-                "Do not start or change music on your own. The campaign context shows "
-                "what is currently playing."
-            )
         else:
             parts.append(
                 "- Background music: enabled. Use play_music and stop_music "
@@ -217,10 +209,9 @@ def build_system(meta: CampaignMeta, workspace: Workspace | None = None) -> list
     else:
         parts.append("- Background music: disabled. Do not attempt to play music.")
     if meta.images_enabled:
-        images_auto = bool(meta.settings.get("images_auto", True))
-        if meta.mode == "gm" and images_auto:
+        if meta.mode == "gm":
             parts.append(
-                "- Images: enabled (auto). Show the player a fresh illustration with "
+                "- Images: enabled. Show the player a fresh illustration with "
                 "generate_image every time the scene changes: whenever you call update_scene "
                 "for a newly entered location, generate an image of that location in the same "
                 "turn. Also show one for an important NPC on first appearance, a notable item "
@@ -232,12 +223,6 @@ def build_system(meta: CampaignMeta, workspace: Workspace | None = None) -> list
                 "regenerating it. Generation runs in the background, so do not wait for it. "
                 "Don't show several images for the same unchanged scene, but a scene change "
                 "always warrants a new image."
-            )
-        elif meta.mode == "gm":
-            parts.append(
-                "- Images: enabled (manual). Use generate_image and show_image only when the "
-                "player asks to see something; do not show images on your own. find_images "
-                "lists earlier images and reference_images keeps a subject consistent."
             )
         else:
             parts.append(

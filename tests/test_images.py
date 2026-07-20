@@ -226,11 +226,10 @@ async def test_image_toggle_controls_tools_and_prompt(make_session):
     assert "generate_image" in session.tools
     assert "show_image" in session.tools
     assert "find_images" in session.tools
-    assert "Images: enabled (auto)" in session.build_system()[0].text
+    assert "Images: enabled. Show the player" in session.build_system()[0].text
 
-    session.set_images_auto(False)
-    assert "Images: enabled (manual)" in session.build_system()[0].text
-    session.set_images_auto(True)
+    session.meta.settings["images_auto"] = False
+    assert "Images: enabled. Show the player" in session.build_system()[0].text
 
     session.set_images_enabled(False)
     assert "generate_image" not in session.tools
@@ -242,6 +241,7 @@ def test_assistant_mode_images_prompt(make_session):
     session.set_images_enabled(True)
     text = session.build_system()[0].text
     assert "generate_image and show_image when the GM asks" in text
+    assert "Show the player a fresh illustration" not in text
 
 
 # --- Gemini backend ----------------------------------------------------------

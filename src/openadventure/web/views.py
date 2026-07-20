@@ -191,10 +191,6 @@ def media_payload(session: GameSession) -> dict[str, Any]:
             "music": session.meta.music_enabled,
             "images": session.meta.images_enabled,
         },
-        "automatic": {
-            "music": session.music_auto(),
-            "images": session.images_auto(),
-        },
         "music_volume": session.media_host.music_volume(),
         "music_status": session.music_status_line(),
     }
