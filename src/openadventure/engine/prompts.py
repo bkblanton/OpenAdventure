@@ -212,17 +212,19 @@ def build_system(meta: CampaignMeta, workspace: Workspace | None = None) -> list
         if meta.mode == "gm":
             parts.append(
                 "- Images: enabled. Show the player a fresh illustration with "
-                "generate_image every time the scene changes: whenever you call update_scene "
-                "for a newly entered location, generate an image of that location in the same "
-                "turn. Also show one for an important NPC on first appearance, a notable item "
-                "or creature, or a dramatic reveal. The image opens on the player's screen "
-                "automatically. Write a vivid, concrete description (appearance, mood, "
-                "lighting, style). For a recurring character, item, or place, call find_images "
-                "first and pass the prior image through reference_images so the look stays "
-                "consistent; use show_image to redisplay an earlier image rather than "
-                "regenerating it. Generation runs in the background, so do not wait for it. "
-                "Don't show several images for the same unchanged scene, but a scene change "
-                "always warrants a new image."
+                "generate_image when the scene changes to a previously unvisited location or "
+                "room: generate an image of that place in the same turn as update_scene. Also "
+                "show one for an important NPC on first appearance, a notable item or creature, "
+                "or a dramatic reveal. The image opens on the player's screen automatically. "
+                "Write a vivid, concrete description (appearance, mood, lighting, style). For "
+                "a recurring character, item, or place, call find_images first and pass the "
+                "prior image through reference_images so the look stays consistent when a new "
+                "image is otherwise warranted. When returning to a visited location or room, "
+                "do not generate or show an image unless the player asks to see it or the place "
+                "has changed in a meaningful, visible way since the last visit. In that case, "
+                "generate a new image using the earlier one as a reference. Generation runs in "
+                "the background, so do not wait for it. A scene change alone does not warrant "
+                "a new image."
             )
         else:
             parts.append(

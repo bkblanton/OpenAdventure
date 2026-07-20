@@ -226,10 +226,15 @@ async def test_image_toggle_controls_tools_and_prompt(make_session):
     assert "generate_image" in session.tools
     assert "show_image" in session.tools
     assert "find_images" in session.tools
-    assert "Images: enabled. Show the player" in session.build_system()[0].text
+    prompt = session.build_system()[0].text
+    assert "previously unvisited location or room" in prompt
+    assert "returning to a visited location or room" in prompt
+    assert "changed in a meaningful, visible way since the last visit" in prompt
+    assert "generate a new image using the earlier one as a reference" in prompt
+    assert "A scene change alone does not warrant a new image" in prompt
 
     session.meta.settings["images_auto"] = False
-    assert "Images: enabled. Show the player" in session.build_system()[0].text
+    assert "previously unvisited location or room" in session.build_system()[0].text
 
     session.set_images_enabled(False)
     assert "generate_image" not in session.tools
