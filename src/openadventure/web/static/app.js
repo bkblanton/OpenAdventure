@@ -75,9 +75,7 @@ const dom = {
   settingsTts: $("settings-tts"),
   settingsSfx: $("settings-sfx"),
   settingsImages: $("settings-images"),
-  settingsImagesAuto: $("settings-images-auto"),
   settingsMusic: $("settings-music"),
-  settingsMusicAuto: $("settings-music-auto"),
   settingsMusicVolume: $("settings-music-volume"),
   settingsMusicVolumeOutput: $("settings-music-volume-output"),
   mediaSettingsStatus: $("media-settings-status"),
@@ -840,9 +838,7 @@ function normalizePayload(payload) {
         tts_enabled: campaign?.tts_enabled,
         sound_effects_enabled: campaign?.sound_effects_enabled,
         images_enabled: campaign?.images_enabled,
-        images_auto: campaign?.images_auto,
         music_enabled: campaign?.music_enabled,
-        music_auto: campaign?.music_auto,
         music_volume: campaign?.music_volume,
       };
   return {
@@ -893,9 +889,7 @@ function applyState(state) {
       "tts_enabled",
       "sound_effects_enabled",
       "images_enabled",
-      "images_auto",
       "music_enabled",
-      "music_auto",
       "music_volume",
     ]) {
       if (key in store.gameState.meta) store.media[key] = store.gameState.meta[key];
@@ -1981,22 +1975,15 @@ function mediaSetting(key, fallback = false) {
     images_enabled: "images",
     music_enabled: "music",
   };
-  const automaticKeys = {
-    images_auto: "images",
-    music_auto: "music",
-  };
   const value =
     store.media?.[key] ??
     (enabledKeys[key] ? store.media?.enabled?.[enabledKeys[key]] : undefined) ??
-    (automaticKeys[key] ? store.media?.automatic?.[automaticKeys[key]] : undefined) ??
     store.campaign?.[key] ??
     store.campaign?.settings?.[key];
   return value === undefined || value === null ? fallback : value;
 }
 
 function syncMediaSettingsControls() {
-  dom.settingsImagesAuto.disabled = !dom.settingsImages.checked;
-  dom.settingsMusicAuto.disabled = !dom.settingsMusic.checked;
   dom.settingsMusicVolume.disabled = !dom.settingsMusic.checked;
   const percent = Math.round(clampVolume(dom.settingsMusicVolume.value) * 100);
   dom.settingsMusicVolumeOutput.value = `${percent}%`;
@@ -2029,9 +2016,7 @@ function openSettings() {
   dom.settingsTts.checked = Boolean(mediaSetting("tts_enabled"));
   dom.settingsSfx.checked = Boolean(mediaSetting("sound_effects_enabled"));
   dom.settingsImages.checked = Boolean(mediaSetting("images_enabled"));
-  dom.settingsImagesAuto.checked = Boolean(mediaSetting("images_auto"));
   dom.settingsMusic.checked = Boolean(mediaSetting("music_enabled"));
-  dom.settingsMusicAuto.checked = Boolean(mediaSetting("music_auto"));
   dom.settingsMusicVolume.value = String(clampVolume(mediaSetting("music_volume", 0.2)));
   syncMediaSettingsControls();
   dom.settingsError.hidden = true;
@@ -2601,9 +2586,7 @@ dom.settingsForm.addEventListener("submit", async (event) => {
     tts_enabled: dom.settingsTts.checked,
     sound_effects_enabled: dom.settingsSfx.checked,
     images_enabled: dom.settingsImages.checked,
-    images_auto: dom.settingsImages.checked && dom.settingsImagesAuto.checked,
     music_enabled: dom.settingsMusic.checked,
-    music_auto: dom.settingsMusic.checked && dom.settingsMusicAuto.checked,
     music_volume: clampVolume(dom.settingsMusicVolume.value),
   };
   if (Number.isFinite(contextBudget)) payload.context_budget = contextBudget;

@@ -689,8 +689,6 @@ async def test_media_settings_persist_and_reload_conditional_tools(web_client, m
             "sound_effects_enabled": True,
             "music_enabled": True,
             "images_enabled": True,
-            "music_auto": False,
-            "images_auto": False,
             "music_volume": 0.65,
         },
     )
@@ -704,15 +702,15 @@ async def test_media_settings_persist_and_reload_conditional_tools(web_client, m
         "music": True,
         "images": True,
     }
-    assert payload["media"]["automatic"] == {"music": False, "images": False}
+    assert "automatic" not in payload["media"]
     assert payload["media"]["music_volume"] == pytest.approx(0.65)
     saved = campaign.load_meta()
     assert saved.tts_enabled is True
     assert saved.sound_effects_enabled is True
     assert saved.music_enabled is True
     assert saved.images_enabled is True
-    assert saved.settings["music_auto"] is False
-    assert saved.settings["images_auto"] is False
+    assert "music_auto" not in saved.settings
+    assert "images_auto" not in saved.settings
     assert saved.settings["music_volume"] == pytest.approx(0.65)
 
     invalid = await client.patch(

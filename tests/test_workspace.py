@@ -48,6 +48,27 @@ def test_load_meta_migrates_legacy_ruleset(tmp_path):
     assert meta.system_source == "dnd5e"
 
 
+def test_load_meta_drops_legacy_media_auto_settings(tmp_path):
+    ws = Workspace(tmp_path)
+    campaign = ws.create_campaign("Old Media")
+    snapshots.save_json(
+        campaign.meta_path,
+        {
+            "name": "Old Media",
+            "slug": "old-media",
+            "music_enabled": True,
+            "images_enabled": True,
+            "settings": {"music_auto": False, "images_auto": False, "verbosity": "high"},
+        },
+    )
+
+    meta = campaign.load_meta()
+
+    assert meta.music_enabled is True
+    assert meta.images_enabled is True
+    assert meta.settings == {"verbosity": "high"}
+
+
 def test_duplicate_campaign_rejected(tmp_path):
     ws = Workspace(tmp_path)
     ws.create_campaign("Foo")

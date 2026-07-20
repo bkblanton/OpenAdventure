@@ -633,15 +633,10 @@ def _step_images(console: Console, session: GameSession) -> None:
     )
     if not _ask_yes_no("Set up image generation?", meta.images_enabled):
         return
-    auto = session.images_auto()
-    auto = _ask_yes_no("Auto-show images (the GM illustrates scenes on its own)?", auto)
     _ensure_google(console, session)
     session.set_images_enabled(True)
-    session.set_images_auto(auto)
     session.reload_tools()
-    console.print(
-        f"[green]✓ Images set[/green]: image generation on{' (auto)' if auto else ' (manual)'}."
-    )
+    console.print("[green]✓ Images set[/green]: image generation on.")
 
 
 def _step_narrator_voice(console: Console, session: GameSession) -> None:
@@ -686,22 +681,17 @@ def _step_media(console: Console, session: GameSession) -> None:
     narration = _ask_yes_no("Spoken narration (TTS)?", meta.tts_enabled)
     sfx = _ask_yes_no("Sound effects?", meta.sound_effects_enabled)
     music = _ask_yes_no("Background music?", meta.music_enabled)
-    auto = session.music_auto()
-    if music:
-        auto = _ask_yes_no("Auto-score scenes (AI picks music on its own)?", auto)
     if narration or sfx or music:
         _ensure_elevenlabs(console, session)
     session.set_tts_enabled(narration)
     session.set_sound_effects_enabled(sfx)
     session.set_music_enabled(music)
-    if music:
-        session.set_music_auto(auto)
     session.reload_tools()
     if narration:
         _step_narrator_voice(console, session)
     console.print(
         f"[green]✓ Audio set[/green]: narration {_onoff(narration)}, "
-        f"music {_onoff(music)}{' (auto)' if music and auto else ''}, sfx {_onoff(sfx)}."
+        f"music {_onoff(music)}, sfx {_onoff(sfx)}."
     )
 
 
@@ -709,8 +699,6 @@ def _print_summary(console: Console, session: GameSession) -> None:
     s = session.settings
     meta = session.meta
     ai = "connected" if session.provider else "not connected"
-    auto = " (auto)" if meta.music_enabled and session.music_auto() else ""
-    images_auto = " (auto)" if meta.images_enabled and session.images_auto() else ""
     modules = [m.slug for m in meta.modules]
     console.print(
         f"\n[bold]Setup complete.[/bold] [dim]AI {ai}, "
@@ -718,9 +706,9 @@ def _print_summary(console: Console, session: GameSession) -> None:
         f"sources {', '.join(meta.sources) or 'none'}, premise {'set' if meta.premise else 'none'}, "
         f"modules {', '.join(modules) if modules else 'none'}; "
         f"verbosity {s.verbosity.value}; narration {_onoff(meta.tts_enabled)}, "
-        f"music {_onoff(meta.music_enabled)}{auto}, "
+        f"music {_onoff(meta.music_enabled)}, "
         f"sfx {_onoff(meta.sound_effects_enabled)}, "
-        f"images {_onoff(meta.images_enabled)}{images_auto}.[/dim]"
+        f"images {_onoff(meta.images_enabled)}.[/dim]"
     )
     console.print("[dim]Re-run this anytime with [green]/setup[/green][/dim]")
     console.print()

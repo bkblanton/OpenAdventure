@@ -95,7 +95,6 @@ def _auto_music_check(
     if (
         session.meta.mode != "gm"
         or not session.meta.music_enabled
-        or not bool(session.meta.settings.get("music_auto", True))
         or "play_music" not in session.tools
         or any(tu.name in MUSIC_DECISION_TOOLS for tu in tool_uses)
     ):

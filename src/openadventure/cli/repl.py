@@ -924,21 +924,6 @@ class Repl:
                 "[yellow]Music off[/yellow]: playback stopped (saved to this campaign)."
             )
             return
-        if choice == "auto":
-            state = rest.lower()
-            if state in ("on", "true", "yes", ""):
-                self.session.set_music_auto(True)
-                self.console.print(
-                    "[green]Auto music on[/green]: in GM mode the AI scores scenes on its own."
-                )
-            elif state in ("off", "false", "no"):
-                self.session.set_music_auto(False)
-                self.console.print(
-                    "[yellow]Auto music off[/yellow]: the AI changes music only when asked."
-                )
-            else:
-                self.console.print("Usage: /music auto on|off")
-            return
         if choice == "play":
             if not rest:
                 self.console.print(
@@ -957,9 +942,7 @@ class Repl:
         if choice in ("volume", "vol"):
             self._music_set_volume(rest)
             return
-        self.console.print(
-            "Usage: /music on|off|status|auto on|off|play <desc>|resume|stop|volume <0-100>"
-        )
+        self.console.print("Usage: /music on|off|status|play <desc>|resume|stop|volume <0-100>")
 
     def _music_resume(self) -> None:
         if not self.session.media_host.capabilities.music:
@@ -1026,7 +1009,6 @@ class Repl:
 
     def _print_music_status(self) -> None:
         state = "on" if self.session.meta.music_enabled else "off"
-        auto = "auto" if self.session.music_auto() else "manual"
         backend = self.session.music
         if backend is None:
             detail = "no backend configured"
@@ -1042,14 +1024,12 @@ class Repl:
         )
         volume = f"{int(round(self.session.media_host.music_volume() * 100))}%"
         self.console.print(
-            f"[dim]Music is {state} ({auto}); backend: {detail}; volume: {volume}; "
-            f"{now}; {tools}[/dim]"
+            f"[dim]Music is {state}; backend: {detail}; volume: {volume}; {now}; {tools}[/dim]"
         )
 
     async def _cmd_images(self, args: str) -> None:
         parts = args.strip().split(maxsplit=1)
         choice = parts[0].lower() if parts else "status"
-        rest = parts[1].strip() if len(parts) > 1 else ""
         if choice in ("status", "show"):
             self._print_images_status()
             return
@@ -1063,25 +1043,10 @@ class Repl:
             self.session.set_images_enabled(False)
             self.console.print("[yellow]Image generation off[/yellow] (saved to this campaign).")
             return
-        if choice == "auto":
-            state = rest.lower()
-            if state in ("on", "true", "yes", ""):
-                self.session.set_images_auto(True)
-                self.console.print(
-                    "[green]Auto images on[/green]: in GM mode the GM shows images on its own."
-                )
-            elif state in ("off", "false", "no"):
-                self.session.set_images_auto(False)
-                self.console.print(
-                    "[yellow]Auto images off[/yellow]: the GM shows images only when asked."
-                )
-            else:
-                self.console.print("Usage: /images auto on|off")
-            return
         if choice in ("list", "ls"):
             self._list_images()
             return
-        self.console.print("Usage: /images on|off|status|auto on|off|list")
+        self.console.print("Usage: /images on|off|status|list")
 
     def _ensure_images_ready(self) -> None:
         backend = self.session.images
@@ -1095,7 +1060,6 @@ class Repl:
 
     def _print_images_status(self) -> None:
         state = "on" if self.session.meta.images_enabled else "off"
-        auto = "auto" if self.session.images_auto() else "manual"
         backend = self.session.images
         if backend is None:
             detail = "no backend configured"
@@ -1110,7 +1074,7 @@ class Repl:
             if "generate_image" in self.session.tools
             else "image tools hidden"
         )
-        self.console.print(f"[dim]Images are {state} ({auto}); backend: {detail}; {tools}[/dim]")
+        self.console.print(f"[dim]Images are {state}; backend: {detail}; {tools}[/dim]")
 
     def _list_images(self) -> None:
         from openadventure.engine.tools.ambience_tools import _generated_images
@@ -1757,12 +1721,12 @@ def _command_specs() -> list[tuple]:
         ("/sfx", "toggle AI sound effects: /sfx on|off|status", Repl._cmd_sfx),
         (
             "/music",
-            "background music: /music on|off|auto on|off|play <desc>|resume|stop|volume <0-100>",
+            "background music: /music on|off|play <desc>|resume|stop|volume <0-100>",
             Repl._cmd_music,
         ),
         (
             "/images",
-            "AI images: /images on|off|auto on|off|status|list",
+            "AI images: /images on|off|status|list",
             Repl._cmd_images,
         ),
         # -- Info --

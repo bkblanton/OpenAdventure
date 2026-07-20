@@ -185,10 +185,9 @@ def build_system(meta: CampaignMeta, workspace: Workspace | None = None) -> list
     else:
         parts.append("- Sound effects: disabled. Do not attempt to create sound effects.")
     if meta.music_enabled:
-        music_auto = bool(meta.settings.get("music_auto", True))
-        if meta.mode == "gm" and music_auto:
+        if meta.mode == "gm":
             parts.append(
-                "- Background music: enabled (auto). Proactively keep a looping music bed "
+                "- Background music: enabled. Proactively keep a looping music bed "
                 "that matches the scene with play_music: set one when play begins, and "
                 "change it when the location or mood shifts meaningfully (entering or ending "
                 "combat, a tavern, a tense reveal). Reassess after update_scene, "
@@ -201,13 +200,6 @@ def build_system(meta: CampaignMeta, workspace: Workspace | None = None) -> list
                 "silently: never narrate or comment on music decisions (no 'the music fits "
                 "the mood', no announcing a change) unless the player asks out of character."
             )
-        elif meta.mode == "gm":
-            parts.append(
-                "- Background music: enabled (manual). Use play_music and stop_music "
-                "only when the player asks for music out of character. "
-                "Do not start or change music on your own. The campaign context shows "
-                "what is currently playing."
-            )
         else:
             parts.append(
                 "- Background music: enabled. Use play_music and stop_music "
@@ -217,27 +209,22 @@ def build_system(meta: CampaignMeta, workspace: Workspace | None = None) -> list
     else:
         parts.append("- Background music: disabled. Do not attempt to play music.")
     if meta.images_enabled:
-        images_auto = bool(meta.settings.get("images_auto", True))
-        if meta.mode == "gm" and images_auto:
+        if meta.mode == "gm":
             parts.append(
-                "- Images: enabled (auto). Show the player a fresh illustration with "
-                "generate_image every time the scene changes: whenever you call update_scene "
-                "for a newly entered location, generate an image of that location in the same "
-                "turn. Also show one for an important NPC on first appearance, a notable item "
-                "or creature, or a dramatic reveal. The image opens on the player's screen "
-                "automatically. Write a vivid, concrete description (appearance, mood, "
-                "lighting, style). For a recurring character, item, or place, call find_images "
-                "first and pass the prior image through reference_images so the look stays "
-                "consistent; use show_image to redisplay an earlier image rather than "
-                "regenerating it. Generation runs in the background, so do not wait for it. "
-                "Don't show several images for the same unchanged scene, but a scene change "
-                "always warrants a new image."
-            )
-        elif meta.mode == "gm":
-            parts.append(
-                "- Images: enabled (manual). Use generate_image and show_image only when the "
-                "player asks to see something; do not show images on your own. find_images "
-                "lists earlier images and reference_images keeps a subject consistent."
+                "- Images: enabled. Show the player a fresh illustration with "
+                "generate_image when the scene changes to a previously unvisited location or "
+                "room: generate an image of that place in the same turn as update_scene. Also "
+                "show one for an important NPC on first appearance, a notable item or creature, "
+                "or a dramatic reveal. The image opens on the player's screen automatically. "
+                "Write a vivid, concrete description (appearance, mood, lighting, style). For "
+                "a recurring character, item, or place, call find_images first and pass the "
+                "prior image through reference_images so the look stays consistent when a new "
+                "image is otherwise warranted. When returning to a visited location or room, "
+                "do not generate or show an image unless the player asks to see it or the place "
+                "has changed in a meaningful, visible way since the last visit. In that case, "
+                "generate a new image using the earlier one as a reference. Generation runs in "
+                "the background, so do not wait for it. A scene change alone does not warrant "
+                "a new image."
             )
         else:
             parts.append(

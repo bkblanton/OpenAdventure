@@ -226,11 +226,15 @@ async def test_image_toggle_controls_tools_and_prompt(make_session):
     assert "generate_image" in session.tools
     assert "show_image" in session.tools
     assert "find_images" in session.tools
-    assert "Images: enabled (auto)" in session.build_system()[0].text
+    prompt = session.build_system()[0].text
+    assert "previously unvisited location or room" in prompt
+    assert "returning to a visited location or room" in prompt
+    assert "changed in a meaningful, visible way since the last visit" in prompt
+    assert "generate a new image using the earlier one as a reference" in prompt
+    assert "A scene change alone does not warrant a new image" in prompt
 
-    session.set_images_auto(False)
-    assert "Images: enabled (manual)" in session.build_system()[0].text
-    session.set_images_auto(True)
+    session.meta.settings["images_auto"] = False
+    assert "previously unvisited location or room" in session.build_system()[0].text
 
     session.set_images_enabled(False)
     assert "generate_image" not in session.tools
@@ -242,6 +246,7 @@ def test_assistant_mode_images_prompt(make_session):
     session.set_images_enabled(True)
     text = session.build_system()[0].text
     assert "generate_image and show_image when the GM asks" in text
+    assert "Show the player a fresh illustration" not in text
 
 
 # --- Gemini backend ----------------------------------------------------------
