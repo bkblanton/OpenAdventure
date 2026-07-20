@@ -17,6 +17,13 @@ uv sync
 uv run openadventure web
 ```
 
+For a one-click start after installing `uv`, use the launcher for your system:
+
+- **Windows:** double-click `launch-web.bat`.
+- **macOS:** double-click `launch-web.command`.
+
+Both launchers run from the project folder, prepare the environment through `uv`, start the web app, and open it in your default browser.
+
 OpenAdventure opens `http://127.0.0.1:8000` in your browser. Use **Game library** to upload any rulebooks or adventures you want as `.pdf`, `.md`, or `.txt` files, then choose **New campaign**, attach your books, and start playing. The app prompts for missing API keys when it needs them and saves them only to your local `.env` file.
 
 Use `--port` to choose another localhost port or `--no-open` to keep the browser from opening automatically:
