@@ -1941,8 +1941,8 @@ a:focus-visible {
   margin: -4px 0 13px;
 }
 
-.credential-dialog-card {
-  width: min(100%, 510px);
+.credential-dialog {
+  width: min(510px, calc(100% - 26px));
 }
 
 .media-toggle-grid .toggle-field {
