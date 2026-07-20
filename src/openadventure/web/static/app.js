@@ -322,6 +322,27 @@ function historyText(entry) {
   return entry.text ?? entry.data?.text ?? entry.message ?? entry.summary ?? "";
 }
 
+function renderCampaignPrelude({ empty = false } = {}) {
+  const assistantMode = store.campaign?.mode === "assistant";
+  const kickoffAvailable = Boolean(store.gameState?.campaign_kickoff_available);
+  if (!empty && (assistantMode || !kickoffAvailable)) {
+    if (dom.storyEmpty.isConnected) dom.storyEmpty.remove();
+    return;
+  }
+  dom.storyEmptyEyebrow.textContent = "Before the adventure";
+  if (!assistantMode && !kickoffAvailable) {
+    dom.storyEmptyTitle.textContent = "The table is open";
+    dom.storyEmptyCopy.textContent = "Continue preparing with the GM, or tell the GM when everyone is ready to begin play.";
+  } else {
+    dom.storyEmptyTitle.textContent = assistantMode ? "Prepare your table" : "Prepare your campaign";
+    dom.storyEmptyCopy.textContent = assistantMode
+      ? "Finish choosing the rules, adventure, and settings, then gather the party's characters. When everyone is ready, begin the game as GM and ask the assistant for support as needed."
+      : "Finish choosing the rules, adventure, and settings. When you are ready, the GM will introduce the premise and help finish gathering the party. Play begins only when everyone says they are ready.";
+  }
+  dom.campaignKickoffButton.hidden = assistantMode || !kickoffAvailable;
+  dom.transcript.append(dom.storyEmpty);
+}
+
 function renderHistory(history = store.history) {
   store.history = Array.isArray(history) ? history : [];
   dom.transcript.replaceChildren();
@@ -354,16 +375,7 @@ function renderHistory(history = store.history) {
     }
   }
 
-  if (!visible) {
-    const assistantMode = store.campaign?.mode === "assistant";
-    dom.storyEmptyEyebrow.textContent = "Before the adventure";
-    dom.storyEmptyTitle.textContent = assistantMode ? "Prepare your table" : "Prepare your campaign";
-    dom.storyEmptyCopy.textContent = assistantMode
-      ? "Finish choosing the rules, adventure, and settings, then gather the party's characters. When everyone is ready, begin the game as GM and ask the assistant for support as needed."
-      : "Finish choosing the rules, adventure, and settings. When you are ready, the GM will introduce the premise and help the party create or import characters. Play begins only when everyone says they are ready.";
-    dom.campaignKickoffButton.hidden = assistantMode;
-    dom.transcript.append(dom.storyEmpty);
-  }
+  renderCampaignPrelude({ empty: !visible });
   dom.jumpLatest.hidden = true;
   window.requestAnimationFrame(() => scrollToLatest("auto"));
 }
@@ -899,6 +911,7 @@ function applyState(state) {
     store.gameState,
     store.campaign?.mode || "gm",
   );
+  renderCampaignPrelude({ empty: dom.transcript.childElementCount === 0 });
 }
 
 function providerEnvironmentName(name) {

@@ -17,6 +17,7 @@ from typing import Any
 from openadventure.character_import import IMPORT_PREFIX
 from openadventure.config import AppConfig
 from openadventure.engine.events import EngineEvent
+from openadventure.engine.kickoff import CAMPAIGN_KICKOFF_PREFIX
 from openadventure.engine.session import (
     GameSession,
     empty_cost_breakdown,
@@ -44,7 +45,6 @@ _PUBLIC_SCENE_KEYS = (
     "unresolved_options",
     "flags",
 )
-_CAMPAIGN_KICKOFF_PREFIX = "[START OF CAMPAIGN."
 _BOOK_MANIFEST_KEYS = (
     "source",
     "title",
@@ -257,6 +257,7 @@ def state_snapshot(
     usage = usage if usage is not None else usage_payload(source)
     return {
         "meta": campaign_metadata(meta),
+        "campaign_kickoff_available": campaign_kickoff_available(source),
         "party": party,
         "companions": companions,
         "scene": scene,
@@ -264,6 +265,29 @@ def state_snapshot(
         "clocks": [clock.model_dump(mode="json") for clock in clocks],
         "usage": usage,
     }
+
+
+def campaign_kickoff_available(source: CampaignSource) -> bool:
+    """Whether the web table can still run its dedicated campaign opening.
+
+    Character imports are preparation turns, so they do not consume the opening.
+    Any ordinary player turn or an existing kickoff marker does.
+    """
+
+    campaign, session = _campaign_and_session(source)
+    meta = session.meta if session is not None else campaign.load_meta()
+    if meta.mode != "gm":
+        return False
+    log = session.log if session is not None else EventLog(campaign.log_path)
+    for entry in log.read_all():
+        if entry.type != "user_message":
+            continue
+        text = str(entry.data.get("text", "")).strip()
+        if text.startswith(CAMPAIGN_KICKOFF_PREFIX):
+            return False
+        if not text.startswith(IMPORT_PREFIX):
+            return False
+    return True
 
 
 def usage_payload(source: CampaignSource) -> dict[str, Any]:
@@ -418,7 +442,7 @@ def _history_entry(entry: LogEntry, mode: Mode) -> dict[str, Any] | None:
         # not table dialogue. Preserve it for context and CLI recovery, but let
         # the browser transcript begin with the Game Master's welcome.
         if entry.type == "user_message" and text.startswith(
-            (_CAMPAIGN_KICKOFF_PREFIX, IMPORT_PREFIX)
+            (CAMPAIGN_KICKOFF_PREFIX, IMPORT_PREFIX)
         ):
             return None
         sudo = bool(entry.data.get("sudo"))

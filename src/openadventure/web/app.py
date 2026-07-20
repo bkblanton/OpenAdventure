@@ -34,7 +34,6 @@ from openadventure.engine.events import EngineEvent, RollResult
 from openadventure.engine.kickoff import CAMPAIGN_KICKOFF_INSTRUCTION
 from openadventure.engine.session import resolve_settings
 from openadventure.mechanics.dice import DiceError
-from openadventure.store.sheetstore import SheetStore
 from openadventure.store.workspace import (
     BookTypeMismatch,
     Campaign,
@@ -53,6 +52,7 @@ from openadventure.web.library import (
 from openadventure.web.sessions import SessionHandle, SessionManager, WebMediaHost
 from openadventure.web.views import (
     bootstrap_payload,
+    campaign_kickoff_available,
     campaign_payload,
     public_history,
     sanitize_event,
@@ -705,10 +705,8 @@ async def kickoff_campaign(request: Request) -> Response:
         return _json_error("Campaign kickoff is only available in AI Game Master mode.", 409)
     if session.provider is None:
         return _json_error("Connect an AI provider before meeting the Game Master.", 409)
-    if any(entry.type in ("user_message", "gm_message") for entry in session.log.read_all()):
+    if not campaign_kickoff_available(session):
         return _json_error("This campaign has already started.", 409)
-    if SheetStore(session.campaign).party():
-        return _json_error("This campaign already has a party. Begin by talking to the GM.", 409)
 
     async def source() -> AsyncIterator[EngineEvent]:
         async for engine_event in session.handle_input(CAMPAIGN_KICKOFF_INSTRUCTION):

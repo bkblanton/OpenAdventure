@@ -200,7 +200,7 @@ async def test_campaign_kickoff_streams_cli_session_zero_flow(web_client, monkey
 async def test_campaign_kickoff_rejects_campaign_that_has_started(web_client):
     app, client = web_client
     campaign = app.state.workspace.create_campaign("Ongoing Table")
-    EventLog(campaign.log_path).append("gm_message", {"text": "Welcome, travelers."})
+    EventLog(campaign.log_path).append("user_message", {"text": "I open the iron door."})
     handle = await app.state.sessions.get(campaign.load_meta().slug)
     handle.session.provider = FakeProvider(script=[])
 
@@ -208,6 +208,50 @@ async def test_campaign_kickoff_rejects_campaign_that_has_started(web_client):
 
     assert response.status_code == 409
     assert "already started" in response.json()["error"]
+
+
+async def test_character_import_keeps_campaign_kickoff_available(web_client, monkeypatch):
+    app, client = web_client
+    campaign = app.state.workspace.create_campaign("Prepared Hero")
+    handle = await app.state.sessions.get(campaign.load_meta().slug)
+    handle.session.provider = FakeProvider(script=[])
+
+    async def imported(_text: str, **_kwargs: object) -> AsyncIterator[EngineEvent]:
+        handle.session.log.append(
+            "user_message",
+            {"text": "[OUT-OF-CHARACTER: The player is importing an existing character sheet]"},
+        )
+        handle.session.log.append("gm_message", {"text": "Imported Rowan."})
+        yield TurnStarted(turn_id="import-turn")
+        yield TurnCompleted(turn_id="import-turn")
+
+    monkeypatch.setattr(handle.session, "handle_input", imported)
+
+    imported_response = await client.post(
+        "/api/campaigns/prepared-hero/import",
+        content=b'{"name":"Rowan"}',
+        headers={
+            "content-type": "application/octet-stream",
+            "x-openadventure-filename": "rowan.json",
+        },
+    )
+    imported_events = _ndjson(imported_response)
+
+    assert imported_response.status_code == 200
+    assert imported_events[-1]["state"]["campaign_kickoff_available"] is True
+
+    captured: list[str] = []
+
+    async def kickoff(text: str, **_kwargs: object) -> AsyncIterator[EngineEvent]:
+        captured.append(text)
+        yield TurnStarted(turn_id="kickoff-turn")
+        yield TurnCompleted(turn_id="kickoff-turn")
+
+    monkeypatch.setattr(handle.session, "handle_input", kickoff)
+    kickoff_response = await client.post("/api/campaigns/prepared-hero/actions/kickoff", json={})
+
+    assert kickoff_response.status_code == 200
+    assert "characters are already present" in captured[0]
 
 
 async def test_turn_stream_is_valid_ndjson_from_fake_provider(web_client):
