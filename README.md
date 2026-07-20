@@ -1,74 +1,49 @@
 # OpenAdventure
 
-**Play any tabletop RPG, even when you don't have a Game Master.** OpenAdventure is an open-source AI harness that runs detailed TTRPGs in your terminal, so a table that's short a GM (or a solo player) can still sit down and play. It isn't here to replace Game Masters; it's here for the nights you don't have one.
+**Play any tabletop RPG, even when you don't have a Game Master.** OpenAdventure is an open-source AI harness for running detailed TTRPG campaigns, so a table that's short a GM (or a solo player) can still sit down and play. It isn't here to replace Game Masters; it's here for the nights you don't have one.
 
 Under the hood, an LLM plays the Game Master (or your co-GM) while deterministic Python owns the numbers: dice, character sheets, HP, conditions, initiative. Rulebooks and adventure modules are ingested once and searched during play, so the AI quotes the actual book instead of hallucinating the rules. Bring any system (D&D, Pathfinder, Call of Cthulhu, GURPS, FATE, CY_BORG) by ingesting its book; nothing is hard-coded to dungeons or to one game system.
 
-## Two ways to play
+## Quick start
 
-- **GM mode** (default): the AI runs the campaign and you play. Secret rolls and GM-only canon stay hidden from you.
-- **Assistant mode** (`openadventure new … --mode assistant`, or `/mode assistant`): *you* are the GM running a table; the AI answers rules questions, pulls module content (including secrets), rolls dice, tracks initiative and HP, and keeps the campaign canon. Everything is visible to you.
-
-## Requirements
+The local web app is the fastest way to get started. You need:
 
 - [uv](https://docs.astral.sh/uv/). It fetches the right Python for you (3.14, pinned in `.python-version`), so you don't need it pre-installed.
-- An API key for the model you play on. The default model is GPT-5.6 Luna and uses OpenAI (`OPENAI_API_KEY`). The setup wizard prompts for whichever key the selected model needs, or set it ahead of time in `.env` or the environment to skip that prompt.
+- An API key for the model you play on. The default model is GPT-5.6 Luna and uses OpenAI (`OPENAI_API_KEY`). The app prompts for whichever key the selected model needs, or you can set it ahead of time in `.env` or the environment.
 - Optional: an ElevenLabs key for audio and a Google key for images (both prompted when you turn that media on).
 
 ```powershell
 uv sync
+uv run openadventure web
 ```
 
-To play, bring your own rulebooks and adventure modules as `.pdf`, `.md`, or `.txt` files and ingest them (see [Detailed setup](#detailed-setup)).
+OpenAdventure opens `http://127.0.0.1:8000` in your browser. Use **Game library** to upload any rulebooks or adventures you want as `.pdf`, `.md`, or `.txt` files, then choose **New campaign**, attach your books, and start playing. The app prompts for missing API keys when it needs them and saves them only to your local `.env` file.
 
-## Quick start
+Use `--port` to choose another localhost port or `--no-open` to keep the browser from opening automatically:
 
-These two commands are all you need. Setup wizards inside `new` and `play` ask about sources, modules, model, and preferences on the fly:
+```powershell
+uv run openadventure web --port 8765 --no-open
+```
+
+The app stays on your machine and listens only on localhost. Prefer a terminal interface? See [Detailed setup](#detailed-setup).
+
+## Two ways to play
+
+- **GM mode** (default): the AI runs the campaign and you play. Secret rolls and GM-only canon stay hidden from you.
+- **Assistant mode**: *you* are the GM running a table; the AI answers rules questions, pulls module content (including secrets), rolls dice, tracks initiative and HP, and keeps the campaign canon. Everything is visible to you. Choose this mode when creating a campaign, or switch with `/mode assistant`.
+
+## Detailed setup
+
+Everything in this section is also available in the web app. If you prefer the CLI, its setup wizards can create and configure a campaign as you go:
 
 ```powershell
 uv run openadventure new "Saturday Night"   # prints the slug: saturday-night
 uv run openadventure play saturday-night
 ```
 
-Then just talk: *"roll me a dwarf fighter"*, *"I kick open the door"*, *"give us a random fight for our level"*. Quit any time; `openadventure play <slug>` resumes exactly where you left off and shows a recap.
+Then just talk: *"roll me a dwarf fighter"*, *"I kick open the door"*, or *"give us a random fight for our level"*. Quit at any time; `openadventure play <slug>` resumes where you left off and shows a recap. Running `uv run openadventure` without a subcommand lets you choose a campaign interactively, while `uv run openadventure campaigns` lists them.
 
-Bare `uv run openadventure` drops you into the play flow and lets you pick a campaign interactively. `uv run openadventure campaigns` lists them.
-
-## Local web app
-
-Start the browser interface with:
-
-```powershell
-uv run openadventure web
-```
-
-OpenAdventure binds to `http://127.0.0.1:8000` and opens it in your default browser. It uses
-the same Python engine, workspace, campaigns, books, characters, and event log as the terminal
-interface. You can create or switch campaigns, stream turns as the GM responds, roll dice,
-undo or retry turns, request a recap, tune campaign settings, and keep the party, scene,
-encounter, and progress clocks visible while you play. The browser also manages the shared
-game library: upload rule sources or adventure modules, follow each ingestion phase, watch the
-template agent research a rulebook round by round, and choose which books a campaign uses.
-Campaign settings include the active AI model plus narration, sound effects, scene images,
-automatic music, and music volume. Generated audio plays in the browser through an ordered
-queue, while scene images appear directly in the transcript.
-
-Use `--port` to choose another localhost port, or `--no-open` if you do not want the browser
-opened automatically:
-
-```powershell
-uv run openadventure web --port 8765 --no-open
-```
-
-The web app stays on your machine and listens only on localhost. API keys are resolved exactly
-as they are for terminal play, from `.env`, environment variables, or `workspace/config.toml`.
-If the selected model, image generation, or audio generation needs a key, the app prompts for
-it in the browser and saves it only to the local `.env` file. Keys are never included in later
-browser responses. You can skip a prompt and keep using local dice and campaign tools.
-
-## Detailed setup
-
-The steps below are optional; the wizards handle everything either way. We recommend doing them before sitting down to play, because ingestion takes time and it's faster to have it done than to wait mid-session:
+To prepare your books and campaign explicitly, follow the complete CLI workflow below. Ingestion can take time, so it is worth doing before a session:
 
 ```powershell
 # 1. Ingest a rulebook into the shared store (one-time per book; .pdf, .md, or .txt).
@@ -108,9 +83,9 @@ uv run openadventure play curse-of-strahd
 - **Remembers the campaign.** A background "chronicler" reads each stretch of play as it scrolls out of the live context window and distills the durable facts into a structured canon that's fed back into every turn, so the GM stays consistent over a long campaign without holding the whole transcript in memory. Canon entries can be GM-only secrets or pinned as the campaign's spine so they are never dropped, and they carry across modules.
 - **Bring any system.** Ingest any game's book into one shared library, typed at ingestion as a **rules source** (rulebook, monster manual, setting guide) or an **adventure module**, so the two can never be confused. A campaign can attach several sources at once, one flagged as the "system" source that defines the rules and character template. Derive a character-sheet template from a source's creation and advancement chapters so PC creation, leveling, and higher-level builds follow the book (without one the GM improvises); that one-time job runs off the table at high effort.
 - **Multi-module campaigns.** Chain several adventures into one arc; party, sheets, canon, and story summary carry across all of them. Only the module marked **NOW PLAYING** is canonical, so an unreached module can't leak its twists. The same ingested adventure can be a module in any number of campaigns.
-- **Undo & restart.** Every turn is checkpointed, so `/undo` rewinds the last ~30 turns completely (state and conversation), even across restarts. `/restart` archives the whole story and begins the campaign again, restoring or rerolling the party.
-- **Optional media.** TTS narration and sound effects (ElevenLabs), background music, and scene illustrations (Google Gemini "Nano Banana"). Each is opt-in via its slash command, which prompts for the relevant API key, and backends are swappable in `workspace/config.toml`.
-- **Tunable per campaign.** Every campaign starts on a capable default (GPT-5.6 Luna at high effort, thinking on, with a 100k-token context) tuned for depth at the table. Dial it in with five knobs, each applied from the next turn: the AI model (`/model`), reasoning effort (`/effort`), thinking (`/thinking`), narration verbosity (`/verbosity`), and the context budget (`/context`).
+- **Undo & restart.** Every turn is checkpointed, so you can rewind the last ~30 turns completely (state and conversation), even across restarts. You can also archive the whole story and begin the campaign again, restoring or rerolling the party. Use the web app controls or `/undo` and `/restart` in the CLI.
+- **Optional media.** TTS narration and sound effects (ElevenLabs), background music, and scene illustrations (Google Gemini "Nano Banana"). Each is opt-in through the web app's campaign settings or a CLI slash command, which prompts for the relevant API key. Backends are swappable in `workspace/config.toml`.
+- **Tunable per campaign.** Every campaign starts on a capable default (GPT-5.6 Luna at high effort, thinking on, with a 100k-token context) tuned for depth at the table. Dial in the AI model, reasoning effort, thinking, narration verbosity, and context budget from the web app's campaign settings or the corresponding CLI slash commands.
 
 ## Getting help
 
