@@ -2415,9 +2415,6 @@ document.querySelectorAll(".quick-action").forEach((button) => {
       case "recap":
         runRecap();
         break;
-      case "compact":
-        runCompact();
-        break;
       default:
         break;
     }
