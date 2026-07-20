@@ -43,6 +43,7 @@ _PUBLIC_SCENE_KEYS = (
     "unresolved_options",
     "flags",
 )
+_CAMPAIGN_KICKOFF_PREFIX = "[START OF CAMPAIGN."
 _BOOK_MANIFEST_KEYS = (
     "source",
     "title",
@@ -411,6 +412,11 @@ def _history_entry(entry: LogEntry, mode: Mode) -> dict[str, Any] | None:
     if entry.type in ("user_message", "gm_message"):
         text = str(entry.data.get("text", "")).strip()
         if not text:
+            return None
+        # The one-time campaign opening instruction is a logged engine prompt,
+        # not table dialogue. Preserve it for context and CLI recovery, but let
+        # the browser transcript begin with the Game Master's welcome.
+        if entry.type == "user_message" and text.startswith(_CAMPAIGN_KICKOFF_PREFIX):
             return None
         sudo = bool(entry.data.get("sudo"))
         if sudo and mode == "gm":
