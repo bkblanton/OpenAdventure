@@ -40,25 +40,24 @@ keyword, and narrow to one area with 'under'; read_rules opens a section and end
 with pointers to the previous/next section, so you can read a chapter straight
 through. Find: the character creation chapter, core attributes, derived
 statistics, resources (hit points, spell slots, sanity, stress, whatever this
-system tracks), the creation procedure, and how characters advance after creation
-(experience, levels, milestones, whatever this system uses to grow a character).
+system tracks), the creation procedure, and character advancement after creation:
+how progress is earned, recorded, and applied, whatever form it takes.
 
 Then call save_template exactly once with:
 - fields: list of {path, type, description, example} where path starts with
   "fields." (nested allowed, e.g. fields.abilities.str). Cover everything a
-  filled sheet needs.
+  filled sheet needs, including its advancement tracker when it has one.
 - resources: list of {name, description} for numeric pools with current/max.
 - creation_guide: a numbered markdown checklist a game master can follow to
   create a starting character with a player, including which dice to roll. This
   is the priority; get it right first.
 - advancement_guide: a SHORT numbered markdown checklist for the general
-  procedure to advance a character one step (gain a level, spend experience,
-  hit a milestone) and to build one above starting power. Describe the
-  repeatable steps and which dice to roll, and point to where the per-option
-  specifics live (e.g. "look up this level's class features in the rules") for
-  the GM to search at the table. Do NOT enumerate every class/level/option;
-  that is searched live during play. If this system has no advancement, pass an
-  empty string.
+  advancement procedure: what triggers progress, how to calculate, distribute,
+  and record it, how to apply it, and how to build above starting power when the
+  system supports that. Describe repeatable steps and dice, and point to where
+  per-option specifics live for the GM to search at the table. Do NOT enumerate
+  every option; that is searched live during play. If this system has no
+  advancement, pass an empty string.
 
 Ground every entry in what you actually read. Do not assume D&D conventions
 unless this source uses them."""

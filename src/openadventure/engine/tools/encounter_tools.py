@@ -261,7 +261,8 @@ ENCOUNTER_TOOLS = [
         description=(
             "Manage the active encounter: set initiative, add reinforcements, mark "
             "combatants defeated, advance the turn, or end the fight. Damage/healing "
-            "goes through modify_resource on the combatant's sheet."
+            "goes through modify_resource on the combatant's sheet. When ending a fight, "
+            "settle any advancement reward required by the campaign before final narration."
         ),
         args_model=UpdateEncounterArgs,
         handler=_update_encounter,

@@ -238,12 +238,12 @@ def build_system(meta: CampaignMeta, workspace: Workspace | None = None) -> list
     template = load_character_template(meta, workspace)
     if template is not None:
         advancement_note = (
-            " When a character levels up or advances, or when a player asks to start "
-            "above 1st level, follow the advancement_guide the same way: work its steps "
-            "in order and apply the results with update_sheet/modify_resource (raise "
-            "fields.level, add hit points, record new abilities). Higher-level creation "
-            "is the creation_guide followed by the advancement_guide repeated up to the "
-            "target level."
+            " When a character earns, spends, or triggers advancement, follow the "
+            "advancement_guide in order and apply its results to the template-defined "
+            "fields and resources with update_sheet/modify_resource. Do not assume the "
+            "system uses experience or levels. When its rules support starting above "
+            "baseline power, follow the creation_guide and then the advancement_guide "
+            "to the target."
             if template.get("advancement_guide")
             else ""
         )

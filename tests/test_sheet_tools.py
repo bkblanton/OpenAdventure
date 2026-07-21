@@ -502,8 +502,10 @@ def test_advancement_guide_lands_in_system_prompt(make_session, workspace, campa
     system = session.build_system()[0].text
     # Both the JSON key and the prose telling the GM how to use it appear.
     assert "advancement_guide" in system
-    assert "levels up" in system
-    assert "above 1st level" in system
+    assert "earns, spends, or triggers advancement" in system
+    assert "Do not assume the system uses experience or levels" in system
+    assert "starting above baseline power" in system
+    assert "Never assume combat grants experience" in system
 
 
 def test_pc_sheet_stamped_with_system_template_name(workspace, campaign):
