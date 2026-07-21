@@ -309,7 +309,10 @@ async def test_template_job_progress_success_and_overwrite(web_client, monkeypat
         assert directory == source_dir
         assert source_name == "template-rules"
         assert settings.model == "gpt-5.6-luna"
-        on_progress("Round 3/16: reading character creation")
+        on_progress("Round 3/16: Searching for character creation rules")
+        on_progress("Round 3/16: It")
+        on_progress("Round 3/16: It looks")
+        on_progress("Round 3/16: It looks like the creation chapter is indexed")
         template = {
             "name": "template-rules/character",
             "version": 2,
@@ -333,12 +336,10 @@ async def test_template_job_progress_success_and_overwrite(web_client, monkeypat
         "resources": 1,
         "model": "gpt-5.6-luna",
     }
-    assert any(
-        event["round"] == 3
-        and event["max_rounds"] == 16
-        and event["message"] == "reading character creation"
-        for event in completed["events"]
-    )
+    round_events = [event for event in completed["events"] if event["round"] == 3]
+    assert len(round_events) == 1
+    assert round_events[0]["max_rounds"] == 16
+    assert round_events[0]["message"] == "It looks like the creation chapter is indexed"
     summary = (await client.get("/api/bootstrap")).json()["books"][0]["template"]
     assert summary == {"ready": True, "fields": 2, "resources": 1}
 

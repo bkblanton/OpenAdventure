@@ -134,6 +134,8 @@ async def test_homepage_and_static_assets_are_served(web_client):
     assert 'id="app"' in homepage.text
     assert "Prepare your campaign" in homepage.text
     assert "Play begins only when everyone says they are ready." in homepage.text
+    assert "No rules selected." in homepage.text
+    assert "Game library" in homepage.text
     assert "The story begins here" not in homepage.text
 
     stylesheet = await client.get("/static/styles.css")

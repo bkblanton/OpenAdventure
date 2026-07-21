@@ -237,6 +237,7 @@ class LibraryJobManager:
         total: int | None = None,
         round_number: int | None = None,
         max_rounds: int | None = None,
+        replace_current: bool = False,
     ) -> None:
         job.phase = phase
         job.message = message
@@ -246,9 +247,14 @@ class LibraryJobManager:
             job.total = max(0, total)
         job.round = round_number
         job.max_rounds = max_rounds
-        job.event_seq += 1
+        replacing = replace_current and bool(job.events)
+        if replacing:
+            sequence = job.events[-1]["seq"]
+        else:
+            job.event_seq += 1
+            sequence = job.event_seq
         event = {
-            "seq": job.event_seq,
+            "seq": sequence,
             "phase": job.phase,
             "message": job.message,
             "completed": job.completed,
@@ -257,7 +263,10 @@ class LibraryJobManager:
             "max_rounds": job.max_rounds,
             "elapsed_seconds": round(max(0.0, monotonic() - job.started_at), 1),
         }
-        job.events.append(event)
+        if replacing:
+            job.events[-1] = event
+        else:
+            job.events.append(event)
         if len(job.events) > 160:
             job.events[:] = job.events[-160:]
 
@@ -365,6 +374,9 @@ class LibraryJobManager:
                     total=max_rounds,
                     round_number=round_number,
                     max_rounds=max_rounds,
+                    replace_current=bool(
+                        job.events and job.events[-1].get("round") == round_number
+                    ),
                 )
             else:
                 self._record(job, phase="Researching rules", message=message)

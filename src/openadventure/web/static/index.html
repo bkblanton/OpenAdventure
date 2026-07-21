@@ -354,6 +354,13 @@
             <legend>Rules sources</legend>
             <p>Choose the books the GM can search.</p>
             <div id="source-options" class="book-options"></div>
+            <div id="create-rules-warning" class="creation-rules-warning" role="note">
+              <span aria-hidden="true">!</span>
+              <p>
+                <strong>No rules selected.</strong> You can add and manage rules later from
+                Game library.
+              </p>
+            </div>
           </fieldset>
           <fieldset class="book-picker">
             <legend>Adventure modules</legend>
@@ -665,6 +672,16 @@
                   <span>System source</span>
                   <select id="campaign-system-source" name="system_source"></select>
                 </label>
+                <div id="campaign-template-warning" class="template-warning" role="note" hidden>
+                  <span class="template-warning-mark" aria-hidden="true">!</span>
+                  <div>
+                    <strong id="campaign-template-warning-title">Template recommended</strong>
+                    <p>Build one so character creation and advancement follow this book.</p>
+                  </div>
+                  <button id="campaign-template-action" class="button button-quiet" type="button">
+                    Build template
+                  </button>
+                </div>
               </fieldset>
               <fieldset class="book-picker">
                 <legend>Adventure modules</legend>

@@ -64,6 +64,7 @@ const dom = {
   createSubmit: $("create-submit"),
   sourceOptions: $("source-options"),
   moduleOptions: $("module-options"),
+  createRulesWarning: $("create-rules-warning"),
   settingsDialog: $("settings-dialog"),
   settingsForm: $("settings-form"),
   settingsMode: $("settings-mode"),
@@ -124,6 +125,9 @@ const dom = {
   campaignModuleOptions: $("campaign-module-options"),
   campaignSystemSource: $("campaign-system-source"),
   campaignActiveModule: $("campaign-active-module"),
+  campaignTemplateWarning: $("campaign-template-warning"),
+  campaignTemplateWarningTitle: $("campaign-template-warning-title"),
+  campaignTemplateAction: $("campaign-template-action"),
   campaignLibraryError: $("campaign-library-error"),
   campaignLibrarySubmit: $("campaign-library-submit"),
   rollDialog: $("roll-dialog"),
@@ -184,6 +188,7 @@ const store = {
   libraryJobTimer: null,
   libraryJobActivity: [],
   targetedTemplate: null,
+  campaignLibrarySaveTimer: null,
   credentialRequest: null,
   dismissedCredentials: new Set(),
   audio: {
@@ -1095,6 +1100,13 @@ function renderBookOptions() {
 
   fill(dom.sourceOptions, sources, "sources", "source-book");
   fill(dom.moduleOptions, modules, "modules", "module-book");
+  syncCreateRulesWarning();
+}
+
+function syncCreateRulesWarning() {
+  dom.createRulesWarning.hidden = Boolean(
+    dom.sourceOptions.querySelector('input[name="sources"]:checked'),
+  );
 }
 
 function modelId(model) {
@@ -1284,6 +1296,17 @@ function syncCampaignLibrarySelects(useCampaignDefaults = false) {
   };
   fill(dom.campaignSystemSource, selectedSources, previousSystem, "No system source");
   fill(dom.campaignActiveModule, selectedModules, previousActive, "No active module");
+  syncCampaignTemplateWarning();
+}
+
+function syncCampaignTemplateWarning() {
+  const slug = dom.campaignSystemSource.value;
+  const book = (store.bootstrap.books || []).find((entry) => entry.slug === slug);
+  const needsTemplate = Boolean(book && !templateDetails(book).ready);
+  dom.campaignTemplateWarning.hidden = !needsTemplate;
+  if (needsTemplate) {
+    dom.campaignTemplateWarningTitle.textContent = `${bookTitle(book)} has no character template yet`;
+  }
 }
 
 function renderCampaignLibrary() {
@@ -1367,13 +1390,21 @@ function renderLibraryJob(payload, { kind = "ingest", title = "Library job" } = 
   dom.libraryJob.hidden = false;
   dom.libraryJob.classList.toggle("is-complete", succeeded);
   dom.libraryJob.classList.toggle("is-failed", finished && !succeeded);
-  dom.libraryJobKicker.textContent = kind === "template" ? "Research expedition" : "Building the library";
-  dom.libraryJobTitle.textContent = job.title || job.label || title;
-  dom.libraryJobState.textContent = succeeded ? "Ready" : finished ? status : status === "queued" ? "Queued" : "Working";
+  dom.libraryJobKicker.textContent = succeeded
+    ? "Finished"
+    : kind === "template"
+      ? "Research expedition"
+      : "Building the library";
+  dom.libraryJobTitle.textContent = succeeded
+    ? kind === "template"
+      ? "Character template ready"
+      : "Book added to the library"
+    : job.title || job.label || title;
+  dom.libraryJobState.textContent = succeeded ? "Done" : finished ? status : status === "queued" ? "Queued" : "Working";
   dom.libraryJobCancel.hidden = finished || !job.cancellable;
   dom.libraryJobCancel.disabled = finished;
   dom.libraryJobMessage.textContent = job.message;
-  dom.jobGlyph.textContent = succeeded ? "OK" : kind === "template" ? "T" : "OA";
+  dom.jobGlyph.textContent = succeeded ? "✓" : kind === "template" ? "T" : "OA";
 
   const completed = Number(job.completed);
   const total = Number(job.total);
@@ -2196,6 +2227,15 @@ dom.libraryJobCancel.addEventListener("click", async () => {
   }
 });
 
+dom.campaignSystemSource.addEventListener("change", syncCampaignTemplateWarning);
+
+dom.campaignTemplateAction.addEventListener("click", () => {
+  const slug = dom.campaignSystemSource.value;
+  if (!slug) return;
+  store.targetedTemplate = slug;
+  renderLibraryBooks(slug);
+});
+
 dom.ingestFile.addEventListener("change", () => {
   const file = dom.ingestFile.files?.[0];
   dom.ingestFileLabel.textContent = file ? file.name : "Choose a PDF, Markdown, or text file";
@@ -2301,8 +2341,14 @@ dom.campaignLibraryForm.addEventListener("submit", async (event) => {
     modules: checkedValues(dom.campaignModuleOptions),
     active_module: dom.campaignActiveModule.value || null,
   };
+  if (store.campaignLibrarySaveTimer) {
+    window.clearTimeout(store.campaignLibrarySaveTimer);
+    store.campaignLibrarySaveTimer = null;
+  }
+  dom.campaignLibrarySubmit.classList.remove("is-saved");
   dom.campaignLibrarySubmit.disabled = true;
   dom.campaignLibrarySubmit.textContent = "Saving...";
+  let saved = false;
   try {
     const response = await api.updateLibrary(store.slug, payload);
     const campaign = response?.campaign || response?.meta || response;
@@ -2315,13 +2361,26 @@ dom.campaignLibraryForm.addEventListener("submit", async (event) => {
     }
     renderCampaignLibrary();
     await loadBootstrap();
-    toast("Campaign books updated.");
+    saved = true;
+    toast("Campaign books saved.");
   } catch (error) {
     dom.campaignLibraryError.textContent = errorMessage(error);
     dom.campaignLibraryError.hidden = false;
   } finally {
-    dom.campaignLibrarySubmit.disabled = false;
-    dom.campaignLibrarySubmit.textContent = "Save campaign books";
+    if (saved) {
+      dom.campaignLibrarySubmit.textContent = "✓ Saved";
+      dom.campaignLibrarySubmit.classList.add("is-saved");
+      announce("Campaign books saved.");
+      store.campaignLibrarySaveTimer = window.setTimeout(() => {
+        dom.campaignLibrarySubmit.disabled = false;
+        dom.campaignLibrarySubmit.textContent = "Save campaign books";
+        dom.campaignLibrarySubmit.classList.remove("is-saved");
+        store.campaignLibrarySaveTimer = null;
+      }, 1800);
+    } else {
+      dom.campaignLibrarySubmit.disabled = false;
+      dom.campaignLibrarySubmit.textContent = "Save campaign books";
+    }
   }
 });
 
@@ -2556,6 +2615,7 @@ dom.createForm.addEventListener("submit", async (event) => {
     modules: formData.getAll("modules").map(String),
   };
   if (!payload.name) return;
+  const createdWithoutRules = payload.sources.length === 0;
   dom.createSubmit.disabled = true;
   dom.createSubmit.textContent = "Creating…";
   try {
@@ -2564,6 +2624,9 @@ dom.createForm.addEventListener("submit", async (event) => {
     const slug = response?.campaign?.slug || response?.slug;
     if (!slug) throw new Error("The server created a campaign without returning its slug.");
     await openCampaign(slug, response?.campaign && response?.history ? response : null);
+    if (createdWithoutRules) {
+      toast("This campaign has no rules source. Use Game library to add rules before play.");
+    }
   } catch (error) {
     dom.createError.textContent = errorMessage(error);
     dom.createError.hidden = false;
@@ -2572,6 +2635,8 @@ dom.createForm.addEventListener("submit", async (event) => {
     dom.createSubmit.textContent = "Create campaign";
   }
 });
+
+dom.sourceOptions.addEventListener("change", syncCreateRulesWarning);
 
 dom.settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
