@@ -75,6 +75,7 @@ async def test_bootstrap_create_duplicate_and_unknown_campaign(web_client):
             "name": "Lantern Keep",
             "mode": "assistant",
             "premise": "A beacon has gone dark.",
+            "verbosity": "high",
         },
     )
     assert created.status_code == 201
@@ -83,8 +84,11 @@ async def test_bootstrap_create_duplicate_and_unknown_campaign(web_client):
     assert payload["campaign"]["slug"] == "lantern-keep"
     assert payload["campaign"]["mode"] == "assistant"
     assert payload["campaign"]["premise"] == "A beacon has gone dark."
+    assert payload["campaign"]["settings"]["verbosity"] == "high"
+    assert payload["settings"]["verbosity"] == "high"
     assert payload["history"] == []
     assert app.state.workspace.campaign("lantern-keep").load_meta().name == "Lantern Keep"
+    assert app.state.workspace.campaign("lantern-keep").load_meta().settings["verbosity"] == "high"
 
     duplicate = await client.post("/api/campaigns", json={"name": "Lantern Keep"})
     assert duplicate.status_code == 409

@@ -431,12 +431,16 @@ async def create_campaign(request: Request) -> Response:
         premise = body.get("premise")
         if premise is not None and not isinstance(premise, str):
             raise ValueError("Premise must be text.")
+        verbosity = body.get("verbosity")
+        if verbosity is not None and verbosity not in ("low", "medium", "high"):
+            raise ValueError("Verbosity must be 'low', 'medium', or 'high'.")
         campaign = _workspace(request).create_campaign(
             name.strip(),
             mode=mode,
             sources=_string_list(body.get("sources"), "sources"),
             modules=_string_list(body.get("modules"), "modules"),
             premise=premise.strip() if premise and premise.strip() else None,
+            settings={"verbosity": verbosity} if verbosity is not None else None,
         )
         handle = await _manager(request).get(campaign.load_meta().slug)
     except ValueError as exc:

@@ -60,6 +60,7 @@ const dom = {
   createForm: $("create-form"),
   createName: $("create-name"),
   createPremise: $("create-premise"),
+  createVerbosity: $("create-verbosity"),
   createError: $("create-error"),
   createSubmit: $("create-submit"),
   sourceOptions: $("source-options"),
@@ -2611,6 +2612,7 @@ dom.createForm.addEventListener("submit", async (event) => {
     name: String(formData.get("name") || "").trim(),
     mode: String(formData.get("mode") || "gm"),
     premise: String(formData.get("premise") || "").trim() || null,
+    verbosity: dom.createVerbosity.value,
     sources: formData.getAll("sources").map(String),
     modules: formData.getAll("modules").map(String),
   };
