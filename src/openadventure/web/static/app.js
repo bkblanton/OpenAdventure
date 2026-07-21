@@ -70,6 +70,7 @@ const dom = {
   settingsForm: $("settings-form"),
   settingsMode: $("settings-mode"),
   settingsModel: $("settings-model"),
+  settingsModelNote: $("settings-model-note"),
   settingsEffort: $("settings-effort"),
   settingsThinking: $("settings-thinking"),
   settingsVerbosity: $("settings-verbosity"),
@@ -167,6 +168,7 @@ const store = {
   slug: null,
   campaign: null,
   settings: {},
+  modelOptions: [],
   provider: null,
   media: {},
   history: [],
@@ -850,6 +852,7 @@ function normalizePayload(payload) {
   return {
     campaign,
     settings: payload?.settings || campaign?.settings || {},
+    modelOptions: Array.isArray(payload?.model_options) ? payload.model_options : [],
     provider: payload?.provider || payload?.connection || null,
     media,
     history: Array.isArray(payload?.history) ? payload.history : [],
@@ -864,6 +867,7 @@ function applyPayload(payload, { renderTranscript = true } = {}) {
   store.campaign = normalized.campaign;
   store.slug = normalized.campaign.slug || store.slug;
   store.settings = normalized.settings;
+  store.modelOptions = normalized.modelOptions;
   store.provider = normalized.provider;
   store.media = normalized.media || {};
   syncMediaPayload(store.media);
@@ -1114,16 +1118,42 @@ function modelId(model) {
   return typeof model === "string" ? model : model?.id || model?.model || "";
 }
 
+function modelPricingAvailable(model) {
+  return Number(model?.input_per_mtok) > 0 || Number(model?.output_per_mtok) > 0;
+}
+
+function formatModelRate(value) {
+  const rate = Number(value);
+  if (!Number.isFinite(rate)) return "?";
+  return rate.toLocaleString(undefined, { maximumFractionDigits: 3 });
+}
+
+function modelListPrice(model) {
+  if (!modelPricingAvailable(model)) return "Price unavailable";
+  return `$${formatModelRate(model.input_per_mtok)}/$${formatModelRate(model.output_per_mtok)} per MTok`;
+}
+
+function formatPromptCost(value) {
+  const cost = Number(value);
+  if (!Number.isFinite(cost) || cost < 0) return null;
+  if (cost > 0 && cost < 0.005) return "<$0.01";
+  return `$${cost.toFixed(2)}`;
+}
+
 function modelLabel(model) {
   if (typeof model === "string") return model;
   const id = modelId(model);
   const name = model?.display_name || model?.name || id;
   const provider = model?.provider || model?.backend;
-  return provider ? `${name} (${provider})` : name;
+  const base = provider ? `${name} (${provider})` : name;
+  const estimate = modelPricingAvailable(model)
+    ? formatPromptCost(model?.estimated_prompt_cost_usd)
+    : null;
+  return estimate ? `${base} · ~${estimate}/call` : `${base} · ${modelListPrice(model)}`;
 }
 
-function populateModelSelect(select, current = "") {
-  const models = Array.isArray(store.bootstrap.models) ? store.bootstrap.models : [];
+function populateModelSelect(select, current = "", availableModels = store.bootstrap.models) {
+  const models = Array.isArray(availableModels) ? availableModels : [];
   select.replaceChildren();
   for (const model of models) {
     const id = modelId(model);
@@ -1142,8 +1172,22 @@ function populateModelSelect(select, current = "") {
   select.disabled = select.options.length === 0;
 }
 
+function syncModelCostNote(selected) {
+  if (!selected || !modelPricingAvailable(selected)) {
+    dom.settingsModelNote.textContent =
+      "Pricing is unavailable for this model. The selected model also chooses its provider.";
+    return;
+  }
+  const estimate = formatPromptCost(selected.estimated_prompt_cost_usd);
+  const listPrice = modelListPrice(selected);
+  dom.settingsModelNote.textContent = estimate
+    ? `Estimated ${estimate} per model call at the current campaign context and settings. List price: ${listPrice}. A player turn may make multiple calls; caching may lower the actual cost.`
+    : `List price: ${listPrice}. A campaign-specific estimate is not available.`;
+}
+
 function syncModelSettingsControls() {
-  const selected = (store.bootstrap.models || []).find(
+  const models = store.modelOptions.length ? store.modelOptions : store.bootstrap.models || [];
+  const selected = models.find(
     (model) => modelId(model) === dom.settingsModel.value,
   );
   dom.settingsEffort.disabled = selected?.supports_effort === false;
@@ -1153,6 +1197,7 @@ function syncModelSettingsControls() {
   } else {
     dom.settingsContext.max = "1000000";
   }
+  syncModelCostNote(selected);
 }
 
 function templateDetails(book) {
@@ -2039,7 +2084,11 @@ function openSettings() {
   if (!store.campaign) return;
   const settings = store.settings || store.campaign.settings || {};
   dom.settingsMode.value = store.campaign.mode || "gm";
-  populateModelSelect(dom.settingsModel, settings.model || store.campaign.settings?.model || "");
+  populateModelSelect(
+    dom.settingsModel,
+    settings.model || store.campaign.settings?.model || "",
+    store.modelOptions.length ? store.modelOptions : store.bootstrap.models,
+  );
   syncModelSettingsControls();
   dom.settingsEffort.value = settings.effort || "high";
   dom.settingsThinking.checked = Boolean(settings.thinking);

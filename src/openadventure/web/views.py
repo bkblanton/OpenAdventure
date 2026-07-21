@@ -16,6 +16,7 @@ from typing import Any
 
 from openadventure.character_import import IMPORT_PREFIX
 from openadventure.config import AppConfig
+from openadventure.engine.context import estimate_prompt_cost
 from openadventure.engine.events import EngineEvent
 from openadventure.engine.kickoff import CAMPAIGN_KICKOFF_PREFIX
 from openadventure.engine.session import (
@@ -28,7 +29,7 @@ from openadventure.engine.session import (
 from openadventure.mechanics.clocks import ClockBoard
 from openadventure.mechanics.encounter import Encounter
 from openadventure.mechanics.sheets import Sheet
-from openadventure.providers.base import ModelRegistry, Usage
+from openadventure.providers.base import ModelInfo, ModelRegistry, Usage
 from openadventure.store import snapshots
 from openadventure.store.eventlog import EventLog, LogEntry
 from openadventure.store.sheetstore import SheetStore
@@ -94,20 +95,38 @@ def book_metadata(workspace: Workspace, slug: str) -> dict[str, Any]:
     return payload
 
 
+def _model_metadata(model: ModelInfo) -> dict[str, Any]:
+    return {
+        "id": model.id,
+        "display_name": model.display_name,
+        "provider": model.provider,
+        "context_window": model.context_window,
+        "max_output": model.max_output,
+        "input_per_mtok": model.input_per_mtok,
+        "output_per_mtok": model.output_per_mtok,
+        "supports_effort": model.supports_effort,
+        "supports_thinking": model.supports_thinking,
+    }
+
+
 def model_catalog() -> list[dict[str, Any]]:
     """Models that the web settings and template pickers may offer."""
 
+    return [_model_metadata(model) for model in ModelRegistry.load_default().visible]
+
+
+def campaign_model_options(session: GameSession) -> list[dict[str, Any]]:
+    """Visible models with a campaign-aware, conservative per-call estimate."""
+
+    non_tail_tokens = session.non_tail_tokens()
     return [
         {
-            "id": model.id,
-            "display_name": model.display_name,
-            "provider": model.provider,
-            "context_window": model.context_window,
-            "max_output": model.max_output,
-            "supports_effort": model.supports_effort,
-            "supports_thinking": model.supports_thinking,
+            **_model_metadata(model),
+            "estimated_prompt_cost_usd": estimate_prompt_cost(
+                session.settings, model, non_tail_tokens
+            ),
         }
-        for model in ModelRegistry.load_default().visible
+        for model in session.models.visible
     ]
 
 
@@ -153,6 +172,9 @@ def campaign_payload(
         "campaign": campaign_metadata(meta),
         "settings": settings,
         "provider": provider,
+        "model_options": campaign_model_options(session)
+        if session is not None
+        else model_catalog(),
         "media": media_payload(session) if session is not None else None,
         "history": public_history(source, mode=meta.mode),
         # Usage is a first-class browser payload rather than an accidental

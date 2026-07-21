@@ -12,6 +12,7 @@ import pytest
 
 from openadventure.cli.main import _cmd_web, build_parser
 from openadventure.config import save_local_api_key
+from openadventure.engine.context import estimate_prompt_cost
 from openadventure.engine.events import (
     DebugChatter,
     EngineEvent,
@@ -87,6 +88,20 @@ async def test_bootstrap_create_duplicate_and_unknown_campaign(web_client):
     assert payload["campaign"]["settings"]["verbosity"] == "high"
     assert payload["settings"]["verbosity"] == "high"
     assert payload["history"] == []
+    handle = await app.state.sessions.get("lantern-keep")
+    current_model = handle.session.models.get(handle.session.settings.model)
+    current_option = next(
+        option for option in payload["model_options"] if option["id"] == current_model.id
+    )
+    assert current_option["input_per_mtok"] == current_model.input_per_mtok
+    assert current_option["output_per_mtok"] == current_model.output_per_mtok
+    assert current_option["estimated_prompt_cost_usd"] == pytest.approx(
+        estimate_prompt_cost(
+            handle.session.settings,
+            current_model,
+            handle.session.non_tail_tokens(),
+        )
+    )
     assert app.state.workspace.campaign("lantern-keep").load_meta().name == "Lantern Keep"
     assert app.state.workspace.campaign("lantern-keep").load_meta().settings["verbosity"] == "high"
 
@@ -600,6 +615,18 @@ async def test_settings_update_is_applied_and_persisted(web_client):
     assert payload["settings"]["thinking"] is False
     assert payload["settings"]["verbosity"] == "high"
     assert payload["settings"]["context_budget"] == 48_000
+    handle = await app.state.sessions.get("settings-test")
+    current_model = handle.session.models.get(handle.session.settings.model)
+    current_option = next(
+        option for option in payload["model_options"] if option["id"] == current_model.id
+    )
+    assert current_option["estimated_prompt_cost_usd"] == pytest.approx(
+        estimate_prompt_cost(
+            handle.session.settings,
+            current_model,
+            handle.session.non_tail_tokens(),
+        )
+    )
     saved = campaign.load_meta()
     assert saved.mode == "assistant"
     assert saved.settings == {

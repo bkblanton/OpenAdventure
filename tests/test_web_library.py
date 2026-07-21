@@ -117,6 +117,8 @@ async def test_bootstrap_exposes_model_catalog_and_template_summary(web_client):
             "provider",
             "context_window",
             "max_output",
+            "input_per_mtok",
+            "output_per_mtok",
             "supports_effort",
             "supports_thinking",
         }
