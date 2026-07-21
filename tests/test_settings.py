@@ -53,9 +53,9 @@ def test_registry_unknown_model_gets_safe_defaults():
 
 
 def test_default_settings_are_accuracy_first():
-    # The default table: GPT-5.6 Luna, high effort, thinking on (no presets).
+    # The default table: GPT-5.6 Terra, high effort, thinking on (no presets).
     s = GenerationSettings()
-    assert s.model == "gpt-5.6-luna"
+    assert s.model == "gpt-5.6-terra"
     assert s.effort == Effort.high
     assert s.thinking is True
     assert s.verbosity == Verbosity.medium
@@ -64,11 +64,11 @@ def test_default_settings_are_accuracy_first():
 def test_high_effort_settings_are_accuracy_first_and_separate_from_the_table():
     # Off-hot-path work (template derivation, the canon chronicler) is not
     # real-time, so unlike the default table it turns thinking ON at high effort,
-    # even though it runs the same GPT-5.6 Luna the table does. It stays on the
+    # even though it runs the same GPT-5.6 Terra the table does. It stays on the
     # OpenAI backend (the in-game default) so one OpenAI key serves the
     # table and these jobs.
     assert HIGH_EFFORT_SETTINGS.thinking is True
-    assert HIGH_EFFORT_SETTINGS.model == "gpt-5.6-luna"
+    assert HIGH_EFFORT_SETTINGS.model == "gpt-5.6-terra"
     assert ModelRegistry.load_default().provider_for(HIGH_EFFORT_SETTINGS.model) == "openai"
     assert HIGH_EFFORT_SETTINGS.effort == Effort.high
     # generous output room for a full template plus its thinking

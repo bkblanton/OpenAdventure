@@ -46,9 +46,9 @@ def test_registry_maps_model_to_backend():
 
 def test_model_selects_backend_via_settings():
     registry = ModelRegistry.load_default()
-    # default (no model set) -> overall default is GPT-5.6 Luna -> OpenAI backend
+    # default (no model set) -> overall default is GPT-5.6 Terra -> OpenAI backend
     default = resolve_settings({}, AppConfig(workspace_dir="."), registry)
-    assert default.model == "gpt-5.6-luna"
+    assert default.model == "gpt-5.6-terra"
     assert registry.provider_for(default.model) == "openai"
     # config model picks the model, which picks the backend
     claude = resolve_settings({}, AppConfig(workspace_dir=".", model="claude-opus-4-8"), registry)
@@ -67,9 +67,9 @@ def test_utility_model_picks_its_own_backend():
     from openadventure.engine.session import resolve_utility_settings
 
     registry = ModelRegistry.load_default()
-    # default utility model is GPT-5.6 Luna -> OpenAI, independent of the campaign model
+    # default utility model is GPT-5.6 Terra -> OpenAI, independent of the campaign model
     default = resolve_utility_settings(AppConfig(workspace_dir=".", model="gemini-3.5-flash"))
-    assert default.model == "gpt-5.6-luna"
+    assert default.model == "gpt-5.6-terra"
     assert registry.provider_for(default.model) == "openai"
     # pin a gemini utility model -> runs on the gemini backend
     pinned = resolve_utility_settings(
@@ -382,7 +382,7 @@ def test_connect_provider_without_key_disconnects(make_session, monkeypatch):
 
 
 async def test_cmd_model_switches_backend(make_session, monkeypatch):
-    # The default model is GPT-5.6 Luna (OpenAI); switching to a Gemini model
+    # The default model is GPT-5.6 Terra (OpenAI); switching to a Gemini model
     # flips the backend.
     from io import StringIO
 

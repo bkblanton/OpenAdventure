@@ -101,7 +101,7 @@ DEFAULT_CONFIG_TOML = """\
 
 [provider]
 # The model selects the backend automatically (see /model). Games default to
-# gpt-5.6-luna (OpenAI backend, high effort, thinking on). Set this to pin a
+# gpt-5.6-terra (OpenAI backend, high effort, thinking on). Set this to pin a
 # different default
 # model; tune effort/thinking/context per campaign at play time with /effort,
 # /thinking, /context.
@@ -121,7 +121,7 @@ DEFAULT_CONFIG_TOML = """\
 #                                 # and asks each run. In-game, off-table work
 #                                 # (templates + the canon chronicler) uses the
 #                                 # campaign's table model at high effort instead.
-# model = "gpt-5.6-luna"          # defaults: GPT-5.6 Luna, thinking on at high
+# model = "gpt-5.6-terra"         # defaults: GPT-5.6 Terra, thinking on at high
 #                                 # effort. Off the real-time path. Same OpenAI key
 #                                 # as the in-game default; pin a gemini-* model to
 #                                 # run on Gemini.

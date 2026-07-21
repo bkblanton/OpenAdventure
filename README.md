@@ -9,7 +9,7 @@ Under the hood, an LLM plays the Game Master (or your co-GM) while deterministic
 The local web app is the fastest way to get started. You need:
 
 - [uv](https://docs.astral.sh/uv/). It fetches the right Python for you (3.14, pinned in `.python-version`), so you don't need it pre-installed.
-- An API key for the model you play on. The default model is GPT-5.6 Luna and uses OpenAI (`OPENAI_API_KEY`). The app prompts for whichever key the selected model needs, or you can set it ahead of time in `.env` or the environment.
+- An API key for the model you play on. The default model is GPT-5.6 Terra and uses OpenAI (`OPENAI_API_KEY`). The app prompts for whichever key the selected model needs, or you can set it ahead of time in `.env` or the environment.
 - Optional: an ElevenLabs key for audio and a Google key for images (both prompted when you turn that media on).
 
 ```powershell
@@ -49,7 +49,7 @@ The app stays on your machine and listens only on localhost. Prefer a terminal i
 - **Multi-module campaigns.** Chain several adventures into one arc; party, sheets, canon, and story summary carry across all of them. Only the module marked **NOW PLAYING** is canonical, so an unreached module can't leak its twists. The same ingested adventure can be a module in any number of campaigns.
 - **Undo & restart.** Every turn is checkpointed, so you can rewind the last ~30 turns completely (state and conversation), even across restarts. You can also archive the whole story and begin the campaign again, restoring or rerolling the party. Use the web app controls or `/undo` and `/restart` in the CLI.
 - **Optional media.** TTS narration and sound effects (ElevenLabs), background music, and scene illustrations (Google Gemini "Nano Banana"). Each is opt-in through the web app's campaign settings or a CLI slash command, which prompts for the relevant API key. In GM mode, enabling images or music lets the Game Master use them proactively; in assistant mode, the assistant uses them when the human GM asks. Backends are swappable in `workspace/config.toml`.
-- **Tunable per campaign.** Every campaign starts on a capable default (GPT-5.6 Luna at high effort, thinking on, with a 100k-token context) tuned for depth at the table. Dial in the AI model, reasoning effort, thinking, narration verbosity, and context budget from the web app's campaign settings or the corresponding CLI slash commands.
+- **Tunable per campaign.** Every campaign starts on a capable default (GPT-5.6 Terra at high effort, thinking on, with a 100k-token context) tuned for depth at the table. Dial in the AI model, reasoning effort, thinking, narration verbosity, and context budget from the web app's campaign settings or the corresponding CLI slash commands.
 
 ## Detailed setup
 

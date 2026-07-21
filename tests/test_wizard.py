@@ -798,7 +798,7 @@ def test_template_wizard_uses_default_model_non_interactive(config, monkeypatch)
 
     assert result is not None
     provider, settings = result
-    assert settings.model == "gpt-5.6-luna"  # the accuracy-first default
+    assert settings.model == "gpt-5.6-terra"  # the accuracy-first default
     assert settings.thinking is True
     assert settings.effort.value == "high"  # always runs at high effort
     assert asked["provider"] == "openai"  # key resolved for the model's backend

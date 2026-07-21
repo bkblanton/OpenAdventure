@@ -275,20 +275,20 @@ def test_usage_report_combines_thinking_media_and_cost_components(make_session):
             music_seconds=4,
         ).model_dump()
     )
-    # GPT-5.6 Luna bills 1M input tokens at $1 and output at $6. Thinking is
-    # already included in those 100 output tokens, so text cost is $0.0016,
+    # GPT-5.6 Terra bills 1M input tokens at $2.50 and output at $15. Thinking is
+    # already included in those 100 output tokens, so text cost is $0.004,
     # not a second reasoning charge.
     assert report["cost_breakdown"] == pytest.approx(
         {
-            "text": 0.0016,
+            "text": 0.004,
             "images": 0.134,
             "tts": 0.0075,
             "sound_effects": 0.009999,
             "music": 0.04,
-            "total": 0.193099,
+            "total": 0.195499,
         }
     )
-    assert report["cost_usd"] == pytest.approx(0.193099)
+    assert report["cost_usd"] == pytest.approx(0.195499)
     assert report["estimated_cost_usd"] == pytest.approx(report["cost_usd"])
     assert report["estimated"]["thinking_tokens"] == 80
     assert report["estimated"]["music_seconds"] == 4
