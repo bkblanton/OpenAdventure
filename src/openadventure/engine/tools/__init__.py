@@ -38,11 +38,6 @@ def build_registry(
     from openadventure.engine.tools.clock_tools import CLOCK_TOOLS
     from openadventure.engine.tools.dice_tools import ROLL_DICE
     from openadventure.engine.tools.encounter_tools import ENCOUNTER_TOOLS
-    from openadventure.engine.tools.narration_tools import (
-        CAST_LOOKUP,
-        PLAY_DIALOGUE,
-        STAGE_DIALOGUE,
-    )
     from openadventure.engine.tools.rules_tools import make_campaign_tools, make_rules_tools
     from openadventure.engine.tools.scene_tools import SCENE_TOOLS
     from openadventure.engine.tools.sheet_tools import SHEET_TOOLS
@@ -70,14 +65,8 @@ def build_registry(
     images, music, tts, sound_effects = media_backends or (None, None, None, None)
     # A media tool needs three things: the campaign toggle on, a backend
     # configured, and a frontend that can actually present that surface (caps).
-    # play_* tools fire immediately and are available in every mode; stage_*
-    # tools queue cues synced to the final visible narration, which only exists
-    # in GM mode.
-    if meta.tts_enabled and tts is not None and caps.speech:
-        registry.register(PLAY_DIALOGUE)
-        registry.register(CAST_LOOKUP)
-        if meta.mode == "gm":
-            registry.register(STAGE_DIALOGUE)
+    # TTS narration is automatic in GM mode. It is deliberately not a model
+    # tool, so narration never switches to model-selected character voices.
     if not (meta.images_enabled and caps.images):
         images = None
     if not (meta.sound_effects_enabled and caps.sound_effects):

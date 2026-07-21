@@ -128,13 +128,6 @@ def build_system(meta: CampaignMeta, workspace: Workspace | None = None) -> list
             parts.append(instruction)
     parts.append(_SETTINGS_DRIFT_NOTE)
     if meta.mode == "gm" and meta.tts_enabled:
-        cast_accent = meta.settings.get("narration_accent")
-        accent_text = (
-            f" The default accent for character voices is {cast_accent}; set a speaker's "
-            "accent explicitly when their character would sound different."
-            if cast_accent
-            else ""
-        )
         parts.append(
             "- Narration audio: enabled. The final visible GM response is the narration "
             "script, read aloud by text-to-speech, so write it to be spoken, not skimmed. "
@@ -142,27 +135,13 @@ def build_system(meta: CampaignMeta, workspace: Workspace | None = None) -> list
             "flowing prose and complete sentences. Don't rely on headers, lists, tables, or "
             "emoji to carry meaning. Spell things out as a narrator would say them: write "
             '"roll a d20" or "twelve plus five", not "1d20+5", and expand abbreviations. The '
-            "whole response is voiced in the Narrator voice by default, so do not stage plain "
-            "descriptive narration; it is already spoken. Use stage_dialogue only to give a "
-            "non-narrator speaker (an NPC or creature) their own voice for a quoted line that "
-            "appears verbatim in the final response; when a new recurring speaker first "
-            "appears, set their gender, age, and accent so the cast voice matches, plus "
-            'voice_hint for finer direction. Reserve speaker "Narrator" for the rare '
-            "narration line needing a different voice. Do not stage hidden or throwaway prose. "
-            "Use play_dialogue only for a line that should be spoken immediately and need not "
-            "appear in the visible response (e.g. an off-screen voice)."
-            f"{accent_text}"
+            "entire response, including quoted dialogue, is spoken in the campaign's selected "
+            "Narrator voice. Do not attempt to assign or stage character voices."
         )
     elif meta.mode == "assistant" and meta.tts_enabled:
-        cast_accent = meta.settings.get("narration_accent")
-        accent_text = f" Prefer voices with a {cast_accent} accent." if cast_accent else ""
         parts.append(
             "- Output narration: disabled in assistant mode. Do not narrate ordinary "
-            "assistant replies. Voice commands: enabled. Use play_dialogue only when the "
-            "GM asks you to play or speak a specific line aloud. That line is spoken "
-            "immediately as audio and does not need to appear in your final visible "
-            "response. Keep your normal assistant answer visible and concise."
-            f"{accent_text}"
+            "assistant replies. Keep your normal assistant answer visible and concise."
         )
     else:
         parts.append("- Narration audio: disabled. Do not attempt to queue spoken lines.")

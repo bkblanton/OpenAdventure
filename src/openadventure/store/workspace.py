@@ -161,10 +161,6 @@ class Campaign:
         return self.root / "usage.json"
 
     @property
-    def voice_cast_path(self) -> Path:
-        return self.root / "voice_cast.json"
-
-    @property
     def characters_dir(self) -> Path:
         return self.root / "characters"
 

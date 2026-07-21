@@ -134,7 +134,7 @@ def _step_mode(console: Console, session: GameSession) -> None:
     choice = _ask_choice("Mode", ["gm", "assistant"], current, console)
     if choice != current:
         session.set_mode(choice)
-        session.reload_tools()  # mode gates some tools (e.g. stage_dialogue is GM-only)
+        session.reload_tools()  # mode gates automatic media behavior
     console.print(f"[green]✓ Mode set to {choice}.[/green]")
 
 

@@ -361,8 +361,6 @@ class GameSession:
         from openadventure.store import checkpoints
 
         self._sync_narration_backends()
-        self.tool_ctx.narration_cues = 0
-        self.tool_ctx.voice_cues.clear()
         self.tool_ctx.sound_effect_cues.clear()
         if not ephemeral:
             checkpoints.save(self.campaign, self.log.last_seq)
@@ -884,23 +882,6 @@ class GameSession:
             return None
         return self.replay_music()
 
-    def cast_accent(self) -> str | None:
-        from openadventure.media.narration import cast_accent
-
-        return cast_accent(self.campaign)
-
-    def set_cast_accent(self, accent: str | None) -> str | None:
-        from openadventure.media.narration import CAST_ACCENT_SETTING
-
-        if accent is None or not accent.strip():
-            self.meta.settings.pop(CAST_ACCENT_SETTING, None)
-            self.campaign.save_meta(self.meta)
-            return None
-        value = accent.strip().lower()
-        self.meta.settings[CAST_ACCENT_SETTING] = value
-        self.campaign.save_meta(self.meta)
-        return value
-
     def narrator_voice_id(self) -> str | None:
         """The per-campaign narrator voice override, or None to use the default."""
         from openadventure.media.narration import NARRATOR_VOICE_SETTING
@@ -914,7 +895,7 @@ class GameSession:
         Pass None (or blank) to clear the override and fall back to the config
         default. Applies to the live backend immediately; returns the saved id
         or None when cleared."""
-        from openadventure.media.narration import NARRATOR, NARRATOR_VOICE_SETTING
+        from openadventure.media.narration import NARRATOR_VOICE_SETTING
 
         if voice_id is None or not voice_id.strip():
             self.meta.settings.pop(NARRATOR_VOICE_SETTING, None)
@@ -924,9 +905,6 @@ class GameSession:
             self.meta.settings[NARRATOR_VOICE_SETTING] = result
         self.campaign.save_meta(self.meta)
         self._apply_narrator_voice()
-        # Drop any cached narrator assignment so it's recomputed from the new
-        # voice on the next line; otherwise the remembered cast shadows the change.
-        self.narration.clear_voice(NARRATOR)
         return result
 
     def _apply_narrator_voice(self) -> None:
@@ -968,7 +946,6 @@ class GameSession:
         self,
         text: str,
         *,
-        voice_cues: list | None = None,
         sound_effect_cues: list | None = None,
     ):
         """Narrate visible GM output in the background when GM-mode TTS is on."""
@@ -980,9 +957,7 @@ class GameSession:
         ):
             return None
         self._sync_narration_backends()
-        return self.narration.queue_turn(
-            text, voice_cues=voice_cues, sound_effects=sound_effect_cues
-        )
+        return self.narration.queue_turn(text, sound_effects=sound_effect_cues)
 
     def replay_narration(self):
         """Re-narrate the most recent turn from cached audio, making no new API
@@ -1330,7 +1305,7 @@ class GameSession:
         return render_clocks(load_clocks(self.tool_ctx)) or None
 
     @staticmethod
-    def _npc_brief(sheet: Any, voice_note: str | None = None) -> str:
+    def _npc_brief(sheet: Any) -> str:
         """One on-stage NPC line: name + the sheet's scalar fields, with any
         ``secret`` pulled onto its own indented line so it reads as GM-only.
 
@@ -1342,8 +1317,6 @@ class GameSession:
         bits = [f"{key}: {value}" for key, value in sheet.scalar_fields() if key != "secret"]
         if sheet.conditions:
             bits.append(f"[{', '.join(sheet.conditions)}]")
-        if voice_note:
-            bits.append(voice_note)
         tag = ", with the party" if getattr(sheet, "companion", False) else ""
         head = f"- {sheet.name} (id {sheet.id}{tag})"
         if bits:
@@ -1356,15 +1329,10 @@ class GameSession:
 
     def staged_npcs(self, scene: dict | None) -> str | None:
         """Briefs for the NPCs in front of the GM this turn, pulled from each
-        sheet's structured fields so recurring NPCs keep a consistent voice and
+        sheet's structured fields so recurring NPCs keep a consistent personality and
         motive. Companions (NPCs traveling with the party) come first and are
         always present regardless of scene; the scene's ``npcs_present`` adds the
-        NPCs on stage at this location.
-
-        When narration is on, each already-cast NPC carries a note naming the
-        exact speaker to reuse, so the GM doesn't re-introduce them under a new
-        name and trigger a second casting."""
-        from openadventure.media.narration import load_voice_cast
+        NPCs on stage at this location."""
         from openadventure.store.sheetstore import SheetStore
 
         store = SheetStore(self.campaign)
@@ -1380,22 +1348,8 @@ class GameSession:
                         seen.add(sheet_id)
         if not sheets:
             return None
-        cast = load_voice_cast(self.campaign) if self.meta.tts_enabled else None
-        lines = [self._npc_brief(sheet, self._npc_voice_note(cast, sheet)) for sheet in sheets]
+        lines = [self._npc_brief(sheet) for sheet in sheets]
         return "\n".join(lines) if lines else None
-
-    @staticmethod
-    def _npc_voice_note(cast: Any, sheet: Any) -> str | None:
-        """Cast-status note for one on-stage NPC, or None when narration is off
-        or the NPC has no saved voice yet."""
-        if cast is None:
-            return None
-        from openadventure.store.workspace import slugify
-
-        entry = cast.speakers.get(sheet.id) or cast.speakers.get(slugify(sheet.name))
-        if entry is None:
-            return None
-        return f'voice: already cast, reuse speaker "{entry.speaker}"'
 
     # Honorifics and bare articles dropped before matching a sheet name against scene
     # text, so "Mr. Dooley" matches on "Dooley" and "The Watcher" on "Watcher".

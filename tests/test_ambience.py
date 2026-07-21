@@ -71,9 +71,9 @@ async def test_sound_effect_toggle_controls_agent_tool_visibility(make_session):
 
     session.set_tts_enabled(True)
     session.reload_tools()
-    # GM mode exposes both the immediate play_* tool and the narration-synced stage_* tool.
-    assert "play_dialogue" in session.tools
-    assert "stage_dialogue" in session.tools
+    # Narration is automatic and exposes no model-controlled character voice tools.
+    assert "play_dialogue" not in session.tools
+    assert "stage_dialogue" not in session.tools
     assert "Narration audio: enabled" in session.build_system()[0].text
 
     session.set_sound_effects_enabled(True)
@@ -86,8 +86,8 @@ async def test_sound_effect_toggle_controls_agent_tool_visibility(make_session):
     second_tool_names = {tool.name for tool in session.provider.calls[1].tools}
     assert "play_sound_effect" in second_tool_names
     assert "stage_sound_effect" in second_tool_names
-    assert "play_dialogue" in second_tool_names
-    assert "stage_dialogue" in second_tool_names
+    assert "play_dialogue" not in second_tool_names
+    assert "stage_dialogue" not in second_tool_names
 
     session.set_sound_effects_enabled(False)
     assert not session.campaign.load_meta().sound_effects_enabled

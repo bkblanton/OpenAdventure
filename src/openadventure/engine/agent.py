@@ -364,17 +364,12 @@ async def run_turn(
     if narration:
         if not ephemeral:
             log.append("gm_message", {"text": narration})
-        voice_cues = list(session.tool_ctx.voice_cues)
         sound_effect_cues = list(session.tool_ctx.sound_effect_cues)
-        started = session.queue_narration(
-            narration, voice_cues=voice_cues, sound_effect_cues=sound_effect_cues
-        )
-        session.tool_ctx.voice_cues.clear()
+        started = session.queue_narration(narration, sound_effect_cues=sound_effect_cues)
         session.tool_ctx.sound_effect_cues.clear()
         if started is not None:
             yield started
     else:
-        session.tool_ctx.voice_cues.clear()
         session.tool_ctx.sound_effect_cues.clear()
     session.accrue_usage(total_usage)
     yield TurnCompleted(

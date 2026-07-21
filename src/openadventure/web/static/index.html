@@ -476,6 +476,24 @@
                 <small>Read the Game Master's narration aloud.</small>
               </span>
             </label>
+            <label class="field narrator-voice-field">
+              <span>Narrator voice</span>
+              <input
+                id="settings-narrator-voice"
+                name="narrator_voice_id"
+                type="text"
+                list="settings-narrator-voice-options"
+                aria-describedby="settings-narrator-voice-note"
+                placeholder="Default narrator voice"
+                autocomplete="off"
+                autocapitalize="none"
+                spellcheck="false"
+              >
+              <datalist id="settings-narrator-voice-options"></datalist>
+              <small id="settings-narrator-voice-note">
+                Enter an ElevenLabs voice ID or voice-library URL. One voice reads everything.
+              </small>
+            </label>
             <label class="toggle-field">
               <input id="settings-sfx" name="sound_effects_enabled" type="checkbox">
               <span>

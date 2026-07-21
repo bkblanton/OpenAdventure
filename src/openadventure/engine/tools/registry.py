@@ -37,8 +37,6 @@ class ToolContext:
     # through this). None on off-table dispatchers (template derivation); media
     # tools guard for it.
     media_host: MediaHost | None = None
-    narration_cues: int = 0
-    voice_cues: list[Any] = field(default_factory=list)
     sound_effect_cues: list[Any] = field(default_factory=list)
     # Session-owned accounting hook. Media work is deliberately asynchronous,
     # so it must record successful generation from its background task rather

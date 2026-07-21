@@ -12,7 +12,6 @@ import threading
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -270,56 +269,6 @@ class ElevenLabsTTS(_elevenlabs.ElevenLabsAuth):
             if record is not None:
                 voices.append(record)
         return voices
-
-    async def search_voice_directory(
-        self,
-        *,
-        search: str | None = None,
-        gender: str | None = None,
-        age: str | None = None,
-        accent: str | None = None,
-        language: str | None = "en",
-        category: str | None = "professional",
-        use_cases: Iterable[str] | None = None,
-        descriptives: Iterable[str] | None = None,
-        limit: int = 30,
-    ) -> list[VoiceRecord]:
-        if not self.api_key:
-            raise RuntimeError(self.configuration_hint)
-        params: dict[str, Any] = {"page_size": max(1, min(limit, 100)), "page": 0}
-        for key, value in {
-            "search": search,
-            "gender": gender,
-            "age": age,
-            "accent": accent,
-            "language": language,
-            "category": category,
-        }.items():
-            if value:
-                params[key] = value
-        if use_cases:
-            params["use_cases"] = list(use_cases)
-        if descriptives:
-            params["descriptives"] = list(descriptives)
-        query = urllib.parse.urlencode(params, doseq=True)
-        url = f"{_elevenlabs.BASE_URL}/v1/shared-voices?{query}"
-        payload = await asyncio.to_thread(self._voices_json, url)
-        voices = []
-        for raw in payload.get("voices", []):
-            record = self._voice_record(raw, source="shared")
-            if record is not None:
-                voices.append(record)
-        return voices
-
-    async def add_shared_voice(self, public_owner_id: str, voice_id: str, *, new_name: str) -> str:
-        if not self.api_key:
-            raise RuntimeError(self.configuration_hint)
-        owner = urllib.parse.quote(public_owner_id, safe="")
-        voice = urllib.parse.quote(voice_id, safe="")
-        url = f"{_elevenlabs.BASE_URL}/v1/voices/add/{owner}/{voice}"
-        payload = {"new_name": new_name, "bookmarked": True}
-        response = await asyncio.to_thread(self._voices_json, url, payload, "POST")
-        return str(response.get("voice_id") or voice_id)
 
     def _voices_json(
         self, url: str, payload: dict[str, Any] | None = None, method: str = "GET"

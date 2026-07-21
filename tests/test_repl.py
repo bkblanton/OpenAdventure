@@ -543,22 +543,6 @@ async def test_voice_without_args_shows_status(make_session):
     assert "Narrator voice" in output.getvalue()
 
 
-async def test_voice_cast_subcommand_lists_remembered_voices(make_session):
-    from openadventure.media.narration import VoiceAssignment, VoiceCast, save_voice_cast
-
-    output = StringIO()
-    session = make_session(script=[])
-    save_voice_cast(
-        session.campaign,
-        VoiceCast(speakers={"strahd": VoiceAssignment(speaker="Strahd", voice_id="abc")}),
-    )
-    repl = Repl(Console(file=output, force_terminal=False, color_system=None), session)
-
-    await repl._cmd_voice("cast")
-
-    assert "Strahd" in output.getvalue()
-
-
 async def test_narration_does_not_manage_voice_subcommands(make_session):
     output = StringIO()
     session = make_session(script=[])
@@ -566,8 +550,7 @@ async def test_narration_does_not_manage_voice_subcommands(make_session):
 
     await repl._cmd_narration("accent british")
 
-    # /narration only controls playback now; voice management lives under /voice.
-    assert session.cast_accent() is None
+    # /narration only controls playback; narrator selection lives under /voice.
     assert "Usage: /narration" in output.getvalue()
 
 

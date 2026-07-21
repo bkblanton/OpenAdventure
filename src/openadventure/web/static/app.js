@@ -76,6 +76,9 @@ const dom = {
   settingsVerbosity: $("settings-verbosity"),
   settingsContext: $("settings-context"),
   settingsTts: $("settings-tts"),
+  settingsNarratorVoice: $("settings-narrator-voice"),
+  settingsNarratorVoiceOptions: $("settings-narrator-voice-options"),
+  settingsNarratorVoiceNote: $("settings-narrator-voice-note"),
   settingsSfx: $("settings-sfx"),
   settingsImages: $("settings-images"),
   settingsMusic: $("settings-music"),
@@ -2061,6 +2064,7 @@ function mediaSetting(key, fallback = false) {
 }
 
 function syncMediaSettingsControls() {
+  dom.settingsNarratorVoice.disabled = !dom.settingsTts.checked;
   dom.settingsMusicVolume.disabled = !dom.settingsMusic.checked;
   const percent = Math.round(clampVolume(dom.settingsMusicVolume.value) * 100);
   dom.settingsMusicVolumeOutput.value = `${percent}%`;
@@ -2080,6 +2084,36 @@ function syncMediaSettingsControls() {
     missing.length > 1 ? "Add missing API keys" : "Add missing API key";
 }
 
+async function loadNarratorVoices() {
+  const selected = String(mediaSetting("narrator_voice_id", "") || "");
+  dom.settingsNarratorVoice.value = selected;
+  dom.settingsNarratorVoiceOptions.replaceChildren();
+  dom.settingsNarratorVoiceNote.textContent = "Loading available ElevenLabs voices...";
+  try {
+    const response = await api.narratorVoices(store.slug);
+    const voices = Array.isArray(response?.voices) ? response.voices : [];
+    const seen = new Set();
+    const options = [];
+    for (const voice of voices.sort((left, right) => String(left.name).localeCompare(String(right.name)))) {
+      const voiceId = String(voice.voice_id || "");
+      if (!voiceId || seen.has(voiceId)) continue;
+      seen.add(voiceId);
+      const option = node("option");
+      option.value = voiceId;
+      option.label = String(voice.name || voiceId);
+      options.push(option);
+    }
+    dom.settingsNarratorVoiceOptions.replaceChildren(...options);
+    dom.settingsNarratorVoiceNote.textContent = voices.length
+      ? "Choose a named voice, or enter an ElevenLabs voice ID or voice-library URL."
+      : "Enter an ElevenLabs voice ID or voice-library URL. Leave blank for the default.";
+  } catch (_error) {
+    dom.settingsNarratorVoiceNote.textContent =
+      "Enter an ElevenLabs voice ID or voice-library URL. Named voices could not be loaded.";
+  }
+  syncMediaSettingsControls();
+}
+
 function openSettings() {
   if (!store.campaign) return;
   const settings = store.settings || store.campaign.settings || {};
@@ -2095,6 +2129,7 @@ function openSettings() {
   dom.settingsVerbosity.value = settings.verbosity || "medium";
   dom.settingsContext.value = settings.context_budget || "";
   dom.settingsTts.checked = Boolean(mediaSetting("tts_enabled"));
+  dom.settingsNarratorVoice.value = String(mediaSetting("narrator_voice_id", "") || "");
   dom.settingsSfx.checked = Boolean(mediaSetting("sound_effects_enabled"));
   dom.settingsImages.checked = Boolean(mediaSetting("images_enabled"));
   dom.settingsMusic.checked = Boolean(mediaSetting("music_enabled"));
@@ -2109,6 +2144,7 @@ function openSettings() {
       ? connection.message || `${connection.name} needs ${providerEnvironmentName(connection.name)} in the server environment.`
       : `${connection.name}${connection.model ? ` · ${connection.model}` : ""} is connected.`;
   dom.settingsDialog.showModal();
+  loadNarratorVoices();
 }
 
 function closeInspector() {
@@ -2434,7 +2470,12 @@ dom.campaignLibraryForm.addEventListener("submit", async (event) => {
   }
 });
 
-for (const input of [dom.settingsImages, dom.settingsMusic, dom.settingsMusicVolume]) {
+for (const input of [
+  dom.settingsTts,
+  dom.settingsImages,
+  dom.settingsMusic,
+  dom.settingsMusicVolume,
+]) {
   input.addEventListener("input", syncMediaSettingsControls);
   input.addEventListener("change", syncMediaSettingsControls);
 }
@@ -2700,6 +2741,7 @@ dom.settingsForm.addEventListener("submit", async (event) => {
     thinking: dom.settingsThinking.checked,
     verbosity: dom.settingsVerbosity.value,
     tts_enabled: dom.settingsTts.checked,
+    narrator_voice_id: dom.settingsNarratorVoice.value || null,
     sound_effects_enabled: dom.settingsSfx.checked,
     images_enabled: dom.settingsImages.checked,
     music_enabled: dom.settingsMusic.checked,

@@ -204,6 +204,10 @@ export const api = {
     });
   },
 
+  narratorVoices(slug) {
+    return request(campaignPath(slug, "/voices"));
+  },
+
   saveCredential(slug, { service, apiKey }) {
     return request(campaignPath(slug, "/credentials"), {
       method: "POST",

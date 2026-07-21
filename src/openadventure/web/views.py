@@ -215,6 +215,8 @@ def media_payload(session: GameSession) -> dict[str, Any]:
         },
         "music_volume": session.media_host.music_volume(),
         "music_status": session.music_status_line(),
+        "narrator_voice_id": session.narrator_voice_id(),
+        "active_narrator_voice_id": getattr(session.tts, "voice_id", None),
     }
 
 

@@ -34,6 +34,7 @@ from openadventure.engine.events import EngineEvent, RollResult
 from openadventure.engine.kickoff import CAMPAIGN_KICKOFF_INSTRUCTION
 from openadventure.engine.session import resolve_settings
 from openadventure.mechanics.dice import DiceError
+from openadventure.media.tts import extract_voice_id
 from openadventure.store.workspace import (
     BookTypeMismatch,
     Campaign,
@@ -475,6 +476,43 @@ async def get_usage(request: Request) -> Response:
     return JSONResponse({"usage": usage_payload(handle.session)})
 
 
+async def get_narrator_voices(request: Request) -> Response:
+    """List voices available to the campaign's narration backend."""
+
+    handle = await _session_handle(request)
+    if isinstance(handle, JSONResponse):
+        return handle
+    backend = handle.session.tts
+    list_voices = getattr(backend, "list_voices", None)
+    if not callable(list_voices):
+        return JSONResponse(
+            {
+                "voices": [],
+                "selected_voice_id": handle.session.narrator_voice_id(),
+                "active_voice_id": getattr(backend, "voice_id", None),
+            }
+        )
+    try:
+        voices = await list_voices()
+    except RuntimeError as exc:
+        return _json_error(str(exc))
+    return JSONResponse(
+        {
+            "voices": [
+                {
+                    "voice_id": voice.voice_id,
+                    "name": voice.name,
+                    "category": voice.category,
+                    "preview_url": voice.preview_url,
+                }
+                for voice in voices
+            ],
+            "selected_voice_id": handle.session.narrator_voice_id(),
+            "active_voice_id": getattr(backend, "voice_id", None),
+        }
+    )
+
+
 def _library_slugs(value: Any, field: str) -> list[str]:
     names = _string_list(value, field)
     result: list[str] = []
@@ -914,7 +952,15 @@ async def update_settings(request: Request) -> Response:
         "music_enabled",
         "images_enabled",
     }
-    allowed = generation_keys | media_bool_keys | {"mode", "music_volume"}
+    allowed = (
+        generation_keys
+        | media_bool_keys
+        | {
+            "mode",
+            "music_volume",
+            "narrator_voice_id",
+        }
+    )
     unknown = set(body) - allowed
     if unknown:
         return _json_error(f"Unknown setting(s): {', '.join(sorted(unknown))}.")
@@ -945,11 +991,25 @@ async def update_settings(request: Request) -> Response:
                 or not 0 <= float(body["music_volume"]) <= 1
             ):
                 raise ValueError("music_volume must be between 0 and 1")
+            narrator_voice_changed = "narrator_voice_id" in body
+            narrator_voice_id: str | None = None
+            if narrator_voice_changed:
+                raw_voice = body["narrator_voice_id"]
+                if raw_voice is not None and not isinstance(raw_voice, str):
+                    raise ValueError("narrator_voice_id must be text or null")
+                if isinstance(raw_voice, str) and len(raw_voice) > 512:
+                    raise ValueError("narrator_voice_id must be 512 characters or fewer")
+                narrator_voice_id = extract_voice_id(raw_voice) if raw_voice else None
 
             proposed = dict(handle.session.meta.settings)
             proposed.update({key: body[key] for key in generation_keys if key in body})
             if "music_volume" in body:
                 proposed["music_volume"] = float(body["music_volume"])
+            if narrator_voice_changed:
+                if narrator_voice_id:
+                    proposed["narrator_voice_id"] = narrator_voice_id
+                else:
+                    proposed.pop("narrator_voice_id", None)
             settings = resolve_settings(proposed, handle.session.config, handle.session.models)
             provider_before = handle.session.provider_name()
             provider_after = handle.session.models.provider_for(settings.model)
@@ -995,6 +1055,9 @@ async def update_settings(request: Request) -> Response:
             handle.session.provider = provider
             if "music_volume" in body:
                 handle.session.media_host.set_music_volume(float(body["music_volume"]))
+            if narrator_voice_changed:
+                handle.session.interrupt_narration()
+                handle.session._apply_narrator_voice()
             if stop_music:
                 handle.session.stop_music()
             if reload_tools:
@@ -1115,6 +1178,7 @@ def create_app(config: AppConfig | None = None) -> Starlette:
         Route("/api/campaigns/{slug:str}", get_campaign),
         Route("/api/campaigns/{slug:str}/state", get_state),
         Route("/api/campaigns/{slug:str}/usage", get_usage),
+        Route("/api/campaigns/{slug:str}/voices", get_narrator_voices),
         Route("/api/campaigns/{slug:str}/events", poll_events),
         Route("/api/campaigns/{slug:str}/turn", run_turn, methods=["POST"]),
         Route(

@@ -690,70 +690,17 @@ class Repl:
             return
         self.console.print("Usage: /narration stop|status|replay")
 
-    def _cmd_voice_clear(self, args: str) -> None:
-        target = args.strip()
-        if not target:
-            self.console.print("Usage: /voice clear <speaker>|all")
-            return
-        if target.lower() in ("all", "voices", "cast"):
-            count = self.session.narration.clear_voice_cast()
-            self.console.print(
-                f"[yellow]Cleared {count} remembered narration voice"
-                f"{'' if count == 1 else 's'}.[/yellow]"
-            )
-            return
-        removed = self.session.narration.clear_voice(target)
-        if removed is None:
-            self.console.print(f"[yellow]No remembered voice for {target!r}.[/yellow]")
-            return
-        self.console.print(
-            f"[green]Cleared voice for {removed.speaker}[/green]. "
-            "The next line from that speaker will pick a new voice."
-        )
-
-    def _cmd_voice_accent(self, args: str) -> None:
-        value = args.strip()
-        lower = value.lower()
-        if not value or lower in ("status", "show"):
-            self._print_cast_accent()
-            return
-        if lower in ("clear", "default", "none", "off"):
-            self.session.set_cast_accent(None)
-            self.console.print(
-                "[yellow]Default cast accent cleared[/yellow]. New NPC voices can use any accent."
-            )
-            return
-        accent = self.session.set_cast_accent(value)
-        self.console.print(
-            f"[green]Default cast accent set to {accent}[/green]. "
-            "New NPC voices will use that accent when available "
-            "(the Narrator voice is unaffected)."
-        )
-
     async def _cmd_voice(self, args: str) -> None:
-        """The voice hub: set the narrator's voice, and manage the remembered
-        cast (show, accent, clear)."""
+        """Set or inspect the single voice used for all narration."""
         raw = args.strip()
         parts = raw.split(maxsplit=1)
         choice = parts[0].lower() if parts else ""
         rest = parts[1].strip() if len(parts) > 1 else ""
         if not choice or choice in ("status", "show"):
             self._print_voice_status()
-            self._print_voice_cast()
-            return
-        if choice in ("cast", "voices", "list"):
-            self._print_voice_cast()
-            return
-        if choice == "accent":
-            self._cmd_voice_accent(rest)
             return
         if choice in ("clear", "reset", "remove", "default", "none"):
-            # Bare clear/default resets the narrator's own voice; with a target it
-            # forgets a remembered speaker (or 'all' for the whole cast).
-            if rest:
-                self._cmd_voice_clear(rest)
-            else:
-                self._reset_narrator_voice()
+            self._reset_narrator_voice()
             return
         if choice == "narrator":
             self._set_narrator_voice(rest)
@@ -770,9 +717,7 @@ class Repl:
             return
         voice_id = extract_voice_id(value)
         if not voice_id:
-            self.console.print(
-                "Usage: /voice <id or elevenlabs URL> | cast | accent <a> | clear <speaker>|all"
-            )
+            self.console.print("Usage: /voice <id or elevenlabs URL> | default | status")
             return
         self.session.set_narrator_voice_id(voice_id)
         self.session.interrupt_narration()
@@ -820,45 +765,12 @@ class Repl:
             hint = getattr(backend, "configuration_hint", "")
             if not ready and hint:
                 detail = f"{detail}, not ready: {hint}"
-        accent = self.session.cast_accent() or "any"
         output = (
             "output narration on"
             if self.session.meta.mode == "gm" and self.session.meta.tts_enabled
             else "output narration off"
         )
-        voice_tool = (
-            "voice commands available"
-            if "play_dialogue" in self.session.tools
-            else ("voice commands hidden")
-        )
-        self.console.print(
-            f"[dim]TTS is {state}; backend: {detail}; cast accent: {accent}; "
-            f"{output}; {voice_tool}[/dim]"
-        )
-
-    def _print_cast_accent(self) -> None:
-        accent = self.session.cast_accent()
-        if accent:
-            self.console.print(f"[dim]Default cast accent: {accent}[/dim]")
-        else:
-            self.console.print("[dim]Default cast accent: any[/dim]")
-
-    def _print_voice_cast(self) -> None:
-        cast = self.session.narration.voice_cast()
-        if not cast.speakers:
-            self.console.print("[dim]No remembered narration voices yet.[/dim]")
-            return
-        table = Table("speaker", "voice", "accent", "target", "source", "hint")
-        for assignment in cast.speakers.values():
-            table.add_row(
-                assignment.speaker,
-                assignment.voice_name,
-                assignment.accent or "",
-                assignment.target_accent or "",
-                assignment.source,
-                assignment.voice_hint or "",
-            )
-        self.console.print(table)
+        self.console.print(f"[dim]TTS is {state}; backend: {detail}; {output}[/dim]")
 
     async def _cmd_sfx(self, args: str) -> None:
         choice = args.strip().lower() or "status"
@@ -1713,8 +1625,7 @@ def _command_specs() -> list[tuple]:
         ),
         (
             "/voice",
-            "the narrator voice and remembered cast: /voice <id or elevenlabs URL> "
-            "| cast | accent <a> | clear <speaker>|all | default",
+            "select the narrator voice: /voice <id or elevenlabs URL> | default",
             Repl._cmd_voice,
             ("/voices",),
         ),

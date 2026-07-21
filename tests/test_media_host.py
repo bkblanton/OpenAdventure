@@ -39,8 +39,10 @@ def test_all_capabilities_register_every_media_tool(workspace, campaign):
     reg = build_registry(
         workspace, campaign, meta, media_backends=_backends(), capabilities=MediaCapabilities.all()
     )
-    for name in ("play_dialogue", "play_music", "play_sound_effect", "generate_image"):
+    for name in ("play_music", "play_sound_effect", "generate_image"):
         assert name in reg
+    assert "play_dialogue" not in reg
+    assert "stage_dialogue" not in reg
 
 
 def test_no_capabilities_hide_all_media_tools(workspace, campaign):
@@ -69,7 +71,7 @@ def test_images_only_frontend_keeps_images_drops_audio(workspace, campaign):
         capabilities=MediaCapabilities(images=True),
     )
     assert "generate_image" in reg
-    for name in ("play_dialogue", "play_music", "play_sound_effect"):
+    for name in ("play_dialogue", "stage_dialogue", "play_music", "play_sound_effect"):
         assert name not in reg
 
 

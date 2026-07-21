@@ -719,6 +719,7 @@ async def test_media_settings_persist_and_reload_conditional_tools(web_client, m
         "/api/campaigns/media-settings/settings",
         json={
             "tts_enabled": True,
+            "narrator_voice_id": "https://elevenlabs.io/voices/narrator-web-voice",
             "sound_effects_enabled": True,
             "music_enabled": True,
             "images_enabled": True,
@@ -737,6 +738,8 @@ async def test_media_settings_persist_and_reload_conditional_tools(web_client, m
     }
     assert "automatic" not in payload["media"]
     assert payload["media"]["music_volume"] == pytest.approx(0.65)
+    assert payload["media"]["narrator_voice_id"] == "narrator-web-voice"
+    assert payload["media"]["active_narrator_voice_id"] == "narrator-web-voice"
     saved = campaign.load_meta()
     assert saved.tts_enabled is True
     assert saved.sound_effects_enabled is True
@@ -745,6 +748,7 @@ async def test_media_settings_persist_and_reload_conditional_tools(web_client, m
     assert "music_auto" not in saved.settings
     assert "images_auto" not in saved.settings
     assert saved.settings["music_volume"] == pytest.approx(0.65)
+    assert saved.settings["narrator_voice_id"] == "narrator-web-voice"
 
     invalid = await client.patch(
         "/api/campaigns/media-settings/settings",
@@ -753,6 +757,58 @@ async def test_media_settings_persist_and_reload_conditional_tools(web_client, m
     assert invalid.status_code == 400
     assert campaign.load_meta() == saved
     assert reloads == 1
+
+
+async def test_web_lists_available_narrator_voices(web_client):
+    from openadventure.media.tts import VoiceRecord
+
+    app, client = web_client
+    campaign = app.state.workspace.create_campaign("Narrator Voices")
+    handle = await app.state.sessions.get(campaign.load_meta().slug)
+
+    class VoiceBackend:
+        ready = True
+        voice_id = "default-voice"
+
+        async def list_voices(self):
+            return [
+                VoiceRecord(
+                    voice_id="voice-two",
+                    name="Warm Storyteller",
+                    source="owned",
+                    category="professional",
+                ),
+                VoiceRecord(
+                    voice_id="voice-one",
+                    name="Calm Narrator",
+                    source="owned",
+                ),
+            ]
+
+    handle.session.tts = VoiceBackend()
+    handle.session.set_narrator_voice_id("voice-two")
+
+    response = await client.get("/api/campaigns/narrator-voices/voices")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "voices": [
+            {
+                "voice_id": "voice-two",
+                "name": "Warm Storyteller",
+                "category": "professional",
+                "preview_url": None,
+            },
+            {
+                "voice_id": "voice-one",
+                "name": "Calm Narrator",
+                "category": None,
+                "preview_url": None,
+            },
+        ],
+        "selected_voice_id": "voice-two",
+        "active_voice_id": "voice-two",
+    }
 
 
 async def test_campaign_payload_restores_persisted_images_and_music(web_client):
