@@ -24,3 +24,12 @@ except EOFError, KeyboardInterrupt:
 ```
 
 `ruff format` will rewrite parenthesized handlers into this form; that is intended.
+
+## Codex sandbox and uv
+
+The normal user-level uv cache may be inaccessible from the Codex sandbox. Run uv commands in PowerShell with a writable temporary cache:
+
+```powershell
+$env:UV_CACHE_DIR = Join-Path $env:TEMP "openadventure-uv-cache"
+uv run ...
+```
