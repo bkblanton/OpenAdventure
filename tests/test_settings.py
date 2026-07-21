@@ -21,18 +21,29 @@ def test_registry_loads_and_has_models():
     assert fable.supports_thinking
     assert fable.output_per_mtok == 50.0
     assert "claude-haiku-4-5" in {m.id for m in registry.models}
+    flash = registry.get("gemini-3.6-flash")
+    assert flash.context_window == 1_048_576
+    assert flash.max_output == 65_536
+    assert (flash.input_per_mtok, flash.output_per_mtok) == (1.5, 7.5)
 
 
 def test_deprecated_models_resolve_but_are_hidden_from_lists():
     registry = ModelRegistry.load_default()
-    # The old Sonnet is deprecated: still resolvable when pinned...
+    # Superseded models remain resolvable when pinned for campaign compatibility.
     old = registry.get("claude-sonnet-4-6")
-    assert old.deprecated is True
+    old_flash = registry.get("gemini-3.5-flash")
+    old_pro = registry.get("gemini-3.1-pro-preview")
+    assert old.deprecated is old_flash.deprecated is old_pro.deprecated is True
     assert registry.provider_for("claude-sonnet-4-6") == "anthropic"
-    # ...but kept out of the advertised (visible) list.
+    assert registry.provider_for("gemini-3.5-flash") == "gemini"
+    assert registry.provider_for("gemini-3.1-pro-preview") == "gemini"
+    # Deprecated models are kept out of both frontends' shared visible list.
     visible_ids = {m.id for m in registry.visible}
     assert "claude-sonnet-4-6" not in visible_ids
+    assert "gemini-3.5-flash" not in visible_ids
+    assert "gemini-3.1-pro-preview" not in visible_ids
     assert "claude-sonnet-5" in visible_ids
+    assert "gemini-3.6-flash" in visible_ids
 
 
 def test_registry_unknown_model_gets_safe_defaults():

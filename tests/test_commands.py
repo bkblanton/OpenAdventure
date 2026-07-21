@@ -53,15 +53,19 @@ def test_model_show_returns_payload_not_messages(make_session):
     assert result.messages == []
     assert isinstance(result.data, commands.ModelList)
     assert result.data.current == session.settings.model
+    ids = {model.id for model in result.data.models}
+    assert "gemini-3.6-flash" in ids
+    assert "gemini-3.5-flash" not in ids
+    assert "gemini-3.1-pro-preview" not in ids
 
 
 def test_model_set_flags_backend_switch(make_session):
     session = make_session(script=[])  # default anthropic backend, provider connected
-    result = commands.cmd_model(session, "gemini-3.1-pro-preview")
+    result = commands.cmd_model(session, "gemini-3.6-flash")
     assert isinstance(result.data, commands.ModelChanged)
     assert result.data.backend == "gemini"
     assert result.data.switched is True and result.data.needs_provider is True
-    assert session.settings.model == "gemini-3.1-pro-preview"
+    assert session.settings.model == "gemini-3.6-flash"
 
 
 def test_model_set_same_backend_connected_needs_no_provider(make_session):

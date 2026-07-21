@@ -37,7 +37,7 @@ def test_factory_rejects_unknown_backend():
 
 def test_registry_maps_model_to_backend():
     registry = ModelRegistry.load_default()
-    assert registry.provider_for("gemini-3.5-flash") == "gemini"
+    assert registry.provider_for("gemini-3.6-flash") == "gemini"
     assert registry.provider_for("claude-opus-4-8") == "anthropic"
     # unknown ids are inferred from the vendor's id convention
     assert registry.provider_for("gemini-9-ultra") == "gemini"
@@ -86,7 +86,7 @@ def test_request_uses_minimal_thinking_when_thinking_off():
         system=[SystemBlock(text="be a GM")],
         messages=[Message(role="user", content=[TextBlock(text="hi")])],
         tools=[],
-        settings=GenerationSettings(model="gemini-3.5-flash", thinking=False),
+        settings=GenerationSettings(model="gemini-3.6-flash", thinking=False),
     )
     assert body["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "minimal"}
     assert body["systemInstruction"] == {"parts": [{"text": "be a GM"}]}
@@ -106,16 +106,16 @@ def _level(model: str, *, thinking: bool, effort: Effort = Effort.low) -> str:
 def test_thinking_on_folds_effort_into_the_level():
     # With thinking on, effort drives the depth (and always clears the off-state
     # floor): low/medium -> "medium", high/max -> "high".
-    assert _level("gemini-3.5-flash", thinking=True, effort=Effort.low) == "medium"
-    assert _level("gemini-3.5-flash", thinking=True, effort=Effort.medium) == "medium"
-    assert _level("gemini-3.5-flash", thinking=True, effort=Effort.high) == "high"
-    assert _level("gemini-3.5-flash", thinking=True, effort=Effort.max) == "high"
+    assert _level("gemini-3.6-flash", thinking=True, effort=Effort.low) == "medium"
+    assert _level("gemini-3.6-flash", thinking=True, effort=Effort.medium) == "medium"
+    assert _level("gemini-3.6-flash", thinking=True, effort=Effort.high) == "high"
+    assert _level("gemini-3.6-flash", thinking=True, effort=Effort.max) == "high"
 
 
 def test_thinking_level_clamps_to_what_the_model_supports():
     # 3.x Pro rejects "minimal", so thinking off falls back to its lowest level.
     assert _level("gemini-3.1-pro-preview", thinking=False) == "low"
-    assert _level("gemini-3.5-flash", thinking=False) == "minimal"
+    assert _level("gemini-3.6-flash", thinking=False) == "minimal"
     # deep levels are unaffected by the clamp.
     assert _level("gemini-3.1-pro-preview", thinking=True, effort=Effort.high) == "high"
     # an unknown gemini id uses the safe ["low", "high"] default -> off=low.
@@ -128,7 +128,7 @@ def test_max_tokens_capped_to_model_output():
         system=[],
         messages=[],
         tools=[],
-        settings=GenerationSettings(model="gemini-3.5-flash", max_tokens=10_000_000),
+        settings=GenerationSettings(model="gemini-3.6-flash", max_tokens=10_000_000),
     )
     assert body["generationConfig"]["maxOutputTokens"] == 65536
 

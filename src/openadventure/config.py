@@ -105,7 +105,7 @@ DEFAULT_CONFIG_TOML = """\
 # different default
 # model; tune effort/thinking/context per campaign at play time with /effort,
 # /thinking, /context.
-# model = "gemini-3.5-flash"    # claude-* -> Anthropic, gemini-* -> Gemini,
+# model = "gemini-3.6-flash"    # claude-* -> Anthropic, gemini-* -> Gemini,
 #                               # gpt-* -> OpenAI
 
 # [auth]

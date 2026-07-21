@@ -106,6 +106,10 @@ async def test_bootstrap_exposes_model_catalog_and_template_summary(web_client):
         "resources": 1,
     }
     assert payload["models"]
+    model_ids = {model["id"] for model in payload["models"]}
+    assert "gemini-3.6-flash" in model_ids
+    assert "gemini-3.5-flash" not in model_ids
+    assert "gemini-3.1-pro-preview" not in model_ids
     assert all(
         {
             "id",

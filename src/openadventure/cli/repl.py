@@ -1689,7 +1689,7 @@ def _command_specs() -> list[tuple]:
         (
             "/model",
             "set the AI model (its backend is selected automatically), "
-            "e.g. /model gemini-3.5-flash",
+            "e.g. /model gemini-3.6-flash",
             Repl._cmd_model,
         ),
         ("/effort", "set effort: low|medium|high|max", Repl._cmd_effort),
