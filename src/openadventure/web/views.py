@@ -26,7 +26,6 @@ from openadventure.engine.session import (
     resolve_settings,
     resolve_utility_settings,
 )
-from openadventure.mechanics.clocks import ClockBoard
 from openadventure.mechanics.encounter import Encounter
 from openadventure.mechanics.sheets import Sheet
 from openadventure.providers.base import ModelInfo, ModelRegistry, Usage
@@ -268,12 +267,6 @@ def state_snapshot(
         scene = {key: scene[key] for key in _PUBLIC_SCENE_KEYS if key in scene}
 
     encounter = _encounter_payload(campaign)
-    clocks_data = snapshots.load_json(campaign.clocks_path)
-    board = ClockBoard.model_validate(clocks_data) if clocks_data is not None else ClockBoard()
-    clocks = board.live()
-    if current_mode == "gm":
-        clocks = [clock for clock in clocks if clock.visible]
-
     usage = usage if usage is not None else usage_payload(source)
     return {
         "meta": campaign_metadata(meta),
@@ -282,7 +275,6 @@ def state_snapshot(
         "companions": companions,
         "scene": scene,
         "encounter": encounter,
-        "clocks": [clock.model_dump(mode="json") for clock in clocks],
         "usage": usage,
     }
 

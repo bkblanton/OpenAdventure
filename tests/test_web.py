@@ -25,6 +25,7 @@ from openadventure.engine.events import (
 from openadventure.engine.session import resolve_utility_settings
 from openadventure.providers.base import ModelRegistry, PTextDelta, PTurnDone, Usage
 from openadventure.providers.fake import FakeProvider
+from openadventure.store import snapshots
 from openadventure.store.eventlog import EventLog
 from openadventure.web.app import create_app
 
@@ -168,6 +169,33 @@ async def test_homepage_and_static_assets_are_served(web_client):
     assert "javascript" in script.headers["content-type"]
     assert script.headers["cache-control"] == "no-store"
     assert script.text.strip()
+
+
+async def test_clocks_stay_out_of_the_public_web_ui_and_state(web_client):
+    app, client = web_client
+    campaign = app.state.workspace.create_campaign("Private Clocks")
+    snapshots.save_json(
+        campaign.clocks_path,
+        {
+            "clocks": [
+                {
+                    "id": "ritual",
+                    "name": "The hidden ritual completes",
+                    "size": 4,
+                    "filled": 2,
+                    "visible": True,
+                }
+            ]
+        },
+    )
+
+    homepage = await client.get("/")
+    payload = (await client.get("/api/campaigns/private-clocks")).json()
+
+    assert 'id="clocks-tab"' not in homepage.text
+    assert 'data-inspector-tab="clocks"' not in homepage.text
+    assert "clocks" not in payload["state"]
+    assert snapshots.load_json(campaign.clocks_path)["clocks"][0]["id"] == "ritual"
 
 
 async def test_campaign_kickoff_instruction_is_hidden_from_browser_history(web_client):

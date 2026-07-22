@@ -469,59 +469,10 @@ function renderEncounter(container, state) {
   container.append(card);
 }
 
-function clocksFrom(state) {
-  if (typeof state.clocks === "string") return state.clocks;
-  if (Array.isArray(state.clocks)) return state.clocks;
-  if (state.clocks && Array.isArray(state.clocks.clocks)) return state.clocks.clocks;
-  return [];
-}
-
-function renderClocks(container, state, mode) {
-  const clockValue = clocksFrom(state);
-  if (typeof clockValue === "string") {
-    container.append(rawState(clockValue));
-    return;
-  }
-  const clocks = clockValue.filter(
-    (clock) => clock && clock.status !== "cancelled" && (mode === "assistant" || clock.visible !== false),
-  );
-  if (!clocks.length) {
-    container.append(emptyState("◴", "No visible clocks", "Looming threats and deadlines appear here as they emerge."));
-    return;
-  }
-
-  for (const clock of clocks) {
-    const size = Math.max(1, Math.min(12, Number(clock.size ?? 4)));
-    const filled = Math.max(0, Math.min(size, Number(clock.filled ?? 0)));
-    const card = node("article", "clock-card");
-    const heading = node("div", "clock-heading");
-    heading.append(node("h3", "", clock.name || clock.id || "Progress clock"));
-    heading.append(node("p", "", `${filled}/${size}`));
-    card.append(heading);
-    const segments = node("div", "clock-segments");
-    segments.style.setProperty("--segments", String(size));
-    for (let index = 0; index < size; index += 1) {
-      segments.append(node("span", `clock-segment${index < filled ? " is-filled" : ""}`));
-    }
-    card.append(segments);
-    if (clock.status === "filled") card.append(node("p", "clock-trigger", "Full"));
-    if (mode === "assistant" && clock.trigger) {
-      card.append(node("p", "clock-trigger", `Trigger: ${clock.trigger}`));
-    }
-    container.append(card);
-  }
-}
-
-export function stateCounts(stateValue, mode = "gm") {
+export function stateCounts(stateValue) {
   const state = stateValue?.state && !stateValue.party ? stateValue.state : stateValue || {};
   const party = asArray(state.party ?? state.characters).length + asArray(state.companions).length;
-  const clockValue = clocksFrom(state);
-  const clocks = Array.isArray(clockValue)
-    ? clockValue.filter(
-        (clock) => clock?.status !== "cancelled" && (mode === "assistant" || clock?.visible !== false),
-      ).length
-    : 0;
-  return { party, clocks };
+  return { party };
 }
 
 function usageRecord(value) {
@@ -694,7 +645,7 @@ function renderUsage(container, state) {
   container.append(section);
 }
 
-export function renderInspector(container, tab, stateValue, mode = "gm") {
+export function renderInspector(container, tab, stateValue) {
   const state = stateValue?.state && !stateValue.party ? stateValue.state : stateValue || {};
   container.replaceChildren();
   switch (tab) {
@@ -703,9 +654,6 @@ export function renderInspector(container, tab, stateValue, mode = "gm") {
       break;
     case "encounter":
       renderEncounter(container, state);
-      break;
-    case "clocks":
-      renderClocks(container, state, mode);
       break;
     case "usage":
       renderUsage(container, state);

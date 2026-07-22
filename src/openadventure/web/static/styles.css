@@ -1285,22 +1285,19 @@ a:focus-visible {
 
 .sheet-card,
 .scene-card,
-.encounter-card,
-.clock-card {
+.encounter-card {
   padding: 13px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
 }
 
-.sheet-card + .sheet-card,
-.clock-card + .clock-card {
+.sheet-card + .sheet-card {
   margin-top: 9px;
 }
 
 .sheet-heading,
-.encounter-heading,
-.clock-heading {
+.encounter-heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1309,7 +1306,6 @@ a:focus-visible {
 
 .sheet-heading h3,
 .encounter-heading h3,
-.clock-heading h3,
 .scene-card h3 {
   margin: 0;
   color: var(--ink);
@@ -1483,36 +1479,6 @@ a:focus-visible {
 .combatant-detail {
   color: var(--ink-muted);
   font-size: 9px;
-}
-
-.clock-heading p {
-  margin: 1px 0 0;
-  color: var(--amber);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.clock-segments {
-  display: grid;
-  margin-top: 12px;
-  grid-template-columns: repeat(var(--segments, 6), minmax(5px, 1fr));
-  gap: 4px;
-}
-
-.clock-segment {
-  height: 7px;
-  border-radius: 999px;
-  background: #0f0d0b;
-}
-
-.clock-segment.is-filled {
-  background: var(--amber);
-}
-
-.clock-trigger {
-  margin: 9px 0 0;
-  color: var(--ink-muted);
-  font-size: 10px;
 }
 
 .raw-state {

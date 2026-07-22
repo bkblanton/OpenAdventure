@@ -55,7 +55,6 @@ const dom = {
   inspectorClose: $("inspector-close"),
   inspectorOverlay: $("inspector-overlay"),
   partyCount: $("party-count"),
-  clockCount: $("clock-count"),
   createDialog: $("create-dialog"),
   createForm: $("create-form"),
   createName: $("create-name"),
@@ -909,15 +908,9 @@ function applyState(state) {
     }
     updateCampaignHeader();
   }
-  const counts = stateCounts(store.gameState, store.campaign?.mode || "gm");
+  const counts = stateCounts(store.gameState);
   dom.partyCount.textContent = String(counts.party);
-  dom.clockCount.textContent = String(counts.clocks);
-  renderInspector(
-    dom.inspectorContent,
-    store.inspectorTab,
-    store.gameState,
-    store.campaign?.mode || "gm",
-  );
+  renderInspector(dom.inspectorContent, store.inspectorTab, store.gameState);
   renderCampaignPrelude({ empty: dom.transcript.childElementCount === 0 });
 }
 
@@ -2165,7 +2158,7 @@ function openInspector() {
 }
 
 function setInspectorTab(tab) {
-  if (!["party", "scene", "encounter", "clocks", "usage"].includes(tab)) return;
+  if (!["party", "scene", "encounter", "usage"].includes(tab)) tab = "party";
   store.inspectorTab = tab;
   localStorage.setItem("openadventure.inspectorTab", tab);
   document.querySelectorAll("[data-inspector-tab]").forEach((button) => {
@@ -2174,7 +2167,7 @@ function setInspectorTab(tab) {
     button.setAttribute("aria-selected", String(selected));
     button.tabIndex = selected ? 0 : -1;
   });
-  renderInspector(dom.inspectorContent, tab, store.gameState, store.campaign?.mode || "gm");
+  renderInspector(dom.inspectorContent, tab, store.gameState);
   syncUsageRefresh();
 }
 
@@ -2202,7 +2195,7 @@ async function refreshUsage() {
     if (!usage || typeof usage !== "object" || store.slug !== slug) return;
     store.usage = usage;
     store.gameState = { ...store.gameState, usage };
-    renderInspector(dom.inspectorContent, store.inspectorTab, store.gameState, store.campaign?.mode || "gm");
+    renderInspector(dom.inspectorContent, store.inspectorTab, store.gameState);
   } catch (error) {
     // The regular campaign poll owns connection status. A failed optional
     // refresh should leave the last usable report visible.
@@ -2598,7 +2591,7 @@ document.querySelectorAll("[data-inspector-tab]").forEach((button) => {
   button.addEventListener("keydown", (event) => {
     if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
     event.preventDefault();
-    const tabs = ["party", "scene", "encounter", "clocks", "usage"];
+    const tabs = ["party", "scene", "encounter", "usage"];
     const current = tabs.indexOf(store.inspectorTab);
     const direction = event.key === "ArrowRight" ? 1 : -1;
     const next = tabs[(current + direction + tabs.length) % tabs.length];
