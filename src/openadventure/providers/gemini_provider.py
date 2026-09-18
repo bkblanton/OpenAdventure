@@ -9,14 +9,14 @@ Two Gemini-isms the seam has to absorb:
 * **Thinking level.** Gemini 3 exposes reasoning depth as a single discrete dial
   (``thinkingLevel``: minimal < low < medium < high), so the seam's two knobs map
   onto one scale (see ``_thinking_level``): ``/thinking off`` pins the shallowest
-  level the model allows (``minimal`` on Flash, ``low`` on 3.x Pro, which rejects
-  ``minimal``), the snappy default for a real-time table; ``/thinking on`` lets
+  level the model allows (``minimal`` on older Flash, ``low`` on 3.8 Flash and
+  3.x Pro), the snappy default for a real-time table; ``/thinking on`` lets
   ``effort`` set the depth (medium..high).
 * **Thought signatures.** Gemini hands back an opaque ``thoughtSignature`` on
   the parts it wants returned (chiefly function calls) so it can verify
   reasoning continuity across a tool round (the analogue of an Anthropic
-  thinking-block signature). We cache them by the synthetic tool-call id (Gemini
-  doesn't issue ids) and re-attach them when the engine sends the call back.
+  thinking-block signature). Native response parts are replayed unchanged, and
+  API call ids are retained so function results match the original calls.
 
 See https://ai.google.dev/gemini-api/docs/function-calling
 """
@@ -28,6 +28,7 @@ import json
 import urllib.error
 import urllib.request
 from collections.abc import AsyncIterator, Iterator
+from copy import deepcopy
 from typing import Any
 
 from openadventure.providers.base import (
@@ -179,13 +180,21 @@ class GeminiProvider:
         # rebuild a model turn the engine sends back during a tool loop.
         self._tool_names: dict[str, str] = {}
         self._tool_signatures: dict[str, str] = {}
+        self._tool_ids: dict[str, str] = {}
         self._call_counter = 0
 
     # --- request construction ---------------------------------------------
-    def _convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
+    def _convert_messages(
+        self, messages: list[Message], *, require_call_ids: bool = False
+    ) -> list[dict[str, Any]]:
         contents: list[dict[str, Any]] = []
         for message in messages:
             role = "model" if message.role == "assistant" else "user"
+            if "gemini" in message.provider_content:
+                contents.append(
+                    {"role": role, "parts": deepcopy(message.provider_content["gemini"])}
+                )
+                continue
             parts: list[dict[str, Any]] = []
             for block in message.content:
                 match block.type:
@@ -209,6 +218,8 @@ class GeminiProvider:
                         call: dict[str, Any] = {
                             "functionCall": {"name": block.name, "args": block.input}
                         }
+                        if require_call_ids or block.id in self._tool_ids:
+                            call["functionCall"]["id"] = self._tool_ids.get(block.id, block.id)
                         signature = self._tool_signatures.get(block.id)
                         if signature:
                             call["thoughtSignature"] = signature
@@ -224,6 +235,10 @@ class GeminiProvider:
                                 }
                             }
                         )
+                        if require_call_ids or block.tool_use_id in self._tool_ids:
+                            parts[-1]["functionResponse"]["id"] = self._tool_ids.get(
+                                block.tool_use_id, block.tool_use_id
+                            )
             if parts:
                 contents.append({"role": role, "parts": parts})
         return contents
@@ -246,7 +261,9 @@ class GeminiProvider:
                 "thinkingLevel": _thinking_level(settings, model.thinking_levels)
             }
         body: dict[str, Any] = {
-            "contents": self._convert_messages(messages),
+            "contents": self._convert_messages(
+                messages, require_call_ids=model.requires_tool_call_ids
+            ),
             "generationConfig": generation_config,
         }
         system_text = "\n\n".join(b.text for b in system if b.text)
@@ -296,6 +313,7 @@ class GeminiProvider:
         tool_uses: list[PToolUse] = []
         thinking_text = ""
         thinking_signature = ""
+        native_parts: list[dict[str, Any]] = []
         stop_reason: StopReason = "end_turn"
         usage = Usage()
         try:
@@ -305,6 +323,8 @@ class GeminiProvider:
                     break
                 if isinstance(item, BaseException):
                     raise _wrap_error(item)
+                candidate = (item.get("candidates") or [{}])[0]
+                native_parts.extend(deepcopy(candidate.get("content", {}).get("parts", [])))
                 for event in self._handle_chunk(item, tool_uses):
                     if event.type == "thinking":
                         thinking_text += event.thinking
@@ -323,13 +343,19 @@ class GeminiProvider:
         finally:
             await task
 
-        if thinking_text:
+        if thinking_text or thinking_signature:
             yield PThinking(thinking=thinking_text, signature=thinking_signature)
         for tool_use in tool_uses:
             yield PToolUse(id=tool_use.id, name=tool_use.name, input=tool_use.input)
         if tool_uses:
             stop_reason = "tool_use"
-        yield PTurnDone(stop_reason=stop_reason, usage=usage)
+        yield PTurnDone(
+            stop_reason=stop_reason,
+            usage=usage,
+            message=Message(
+                role="assistant", content=[], provider_content={"gemini": native_parts}
+            ),
+        )
 
     def _handle_chunk(
         self, chunk: dict[str, Any], tool_uses: list[PToolUse]
@@ -340,6 +366,8 @@ class GeminiProvider:
                     call = part["functionCall"]
                     self._call_counter += 1
                     call_id = f"gem-{self._call_counter}"
+                    if call.get("id"):
+                        self._tool_ids[call_id] = call["id"]
                     name = call.get("name", "")
                     self._tool_names[call_id] = name
                     if part.get("thoughtSignature"):
@@ -355,6 +383,8 @@ class GeminiProvider:
                         )
                     elif part["text"]:
                         yield PTextDelta(text=part["text"])
+                elif part.get("thoughtSignature"):
+                    yield PThinking(thinking="", signature=part["thoughtSignature"])
 
 
 def _usage(meta: dict[str, Any]) -> Usage:

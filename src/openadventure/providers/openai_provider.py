@@ -11,10 +11,10 @@ Three OpenAI-isms the seam has to absorb:
   a flat list of typed ``input`` items (``message`` / ``function_call`` /
   ``function_call_output`` / ``reasoning``), and a tool call carries an opaque
   ``call_id`` we reuse as the seam's tool-use id so results match back up.
-* **Reasoning effort.** GPT-5-class models expose one ``reasoning.effort`` dial
-  (minimal < low < medium < high). The seam's two knobs fold onto it (see
-  ``_reasoning_effort``): ``/thinking off`` pins ``minimal`` (the snappy real-time
-  floor); ``/thinking on`` lets ``effort`` set the depth (low..high, ``max``->high).
+* **Reasoning effort.** The seam's two knobs fold onto ``reasoning.effort``.
+  Astra uses low/medium/high/max directly, with ``/thinking off`` selecting low.
+  Models without declared levels retain the legacy minimal floor and max->high
+  mapping (see ``_reasoning_effort``).
 * **Reasoning round-trip.** With ``store: false`` we ask for
   ``reasoning.encrypted_content`` and hand the opaque reasoning items back on the
   next tool round so the model keeps its chain of thought across the round (the
@@ -55,10 +55,7 @@ from openadventure.providers.base import (
 
 OPENAI_API_BASE = "https://api.openai.com/v1"
 
-# OpenAI's single reasoning dial, shallow -> deep. The seam's two knobs fold onto
-# it: thinking off pins "minimal" (the snappy real-time floor); thinking on lets
-# effort pick the depth. OpenAI's scale tops out at "high" (no "max"), so max
-# effort lands on "high".
+# Legacy mapping for models without explicit reasoning-level metadata.
 _EFFORT_REASONING = {
     Effort.low: "low",
     Effort.medium: "medium",
@@ -67,11 +64,15 @@ _EFFORT_REASONING = {
 }
 
 
-def _reasoning_effort(settings: GenerationSettings) -> str:
+def _reasoning_effort(settings: GenerationSettings, supported: list[str] | None = None) -> str:
     """Map (thinking, effort) onto a Responses API ``reasoning.effort`` level.
 
-    thinking off -> "minimal" (fastest, barely reasons); thinking on -> effort
-    sets the depth (low/medium/high, max clamped to high)."""
+    Declared model levels take precedence. Unlisted models retain the legacy
+    minimal floor and max-to-high mapping."""
+    if supported:
+        if not settings.thinking:
+            return supported[0]
+        return settings.effort.value if settings.effort.value in supported else supported[-1]
     if not settings.thinking:
         return "minimal"
     return _EFFORT_REASONING.get(settings.effort, "medium")
@@ -174,7 +175,10 @@ class OpenAIProvider:
         if system_text:
             body["instructions"] = system_text
         if model.supports_thinking:
-            body["reasoning"] = {"effort": _reasoning_effort(settings), "summary": "auto"}
+            body["reasoning"] = {
+                "effort": _reasoning_effort(settings, model.reasoning_levels),
+                "summary": "auto",
+            }
             body["include"] = ["reasoning.encrypted_content"]
         # GPT-5-class models expose an output-length dial that maps cleanly onto
         # the seam's verbosity knob; harmless on models that ignore it.
@@ -245,7 +249,7 @@ class OpenAIProvider:
                     added = item.get("item") or {}
                     if added.get("type") == "function_call":
                         yield PToolUseStart(id=added.get("call_id", ""), name=added.get("name", ""))
-                elif event_type == "response.completed":
+                elif event_type in ("response.completed", "response.incomplete"):
                     response = item.get("response") or {}
                     stop_reason = _stop_reason(response)
                     usage = _usage(response.get("usage") or {})
@@ -332,15 +336,17 @@ def _reasoning_item(summary: str, signature: str) -> dict[str, Any] | None:
 
 def _usage(meta: dict[str, Any]) -> Usage:
     cached = (meta.get("input_tokens_details") or {}).get("cached_tokens", 0) or 0
+    written = (meta.get("input_tokens_details") or {}).get("cache_write_tokens", 0) or 0
     output = meta.get("output_tokens", 0) or 0
     thinking = (meta.get("output_tokens_details") or {}).get("reasoning_tokens", 0) or 0
     return Usage(
         # input_tokens counts cached tokens too; split them out like the other
         # adapters so cost estimation reads a cache hit cheaply. OpenAI's
-        # output_tokens already includes reasoning tokens, and there is no separate
-        # cache-write charge, so cache_creation stays zero.
-        input_tokens=max((meta.get("input_tokens", 0) or 0) - cached, 0),
+        # output_tokens already includes reasoning. GPT-5.6 and later also
+        # itemize cache writes, which must not be billed as ordinary input too.
+        input_tokens=max((meta.get("input_tokens", 0) or 0) - cached - written, 0),
         output_tokens=output,
+        cache_creation_input_tokens=written,
         cache_read_input_tokens=cached,
         # Responses reports reasoning as a subset of output. Preserve the
         # total for billing and expose the exact subset for the usage view.

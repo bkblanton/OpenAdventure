@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from importlib import resources
 from typing import Any, Literal, Protocol
@@ -71,6 +72,12 @@ HIGH_EFFORT_SETTINGS = GenerationSettings(
 )
 
 
+class PriceChange(BaseModel):
+    effective_from: date
+    input_per_mtok: float
+    output_per_mtok: float
+
+
 class ModelInfo(BaseModel):
     id: str
     display_name: str
@@ -78,6 +85,18 @@ class ModelInfo(BaseModel):
     max_output: int
     input_per_mtok: float  # USD per 1M input tokens
     output_per_mtok: float
+    cache_read_multiplier: float = 0.10
+    cache_write_multiplier: float = 1.25
+    long_context_threshold: int | None = None
+    long_context_input_multiplier: float = 1.0
+    long_context_output_multiplier: float = 1.0
+    price_changes: list[PriceChange] = Field(default_factory=list)
+    # Empty preserves the legacy OpenAI mapping for unlisted models.
+    reasoning_levels: list[str] = Field(default_factory=list)
+    requires_tool_call_ids: bool = False
+    thinking_always_on: bool = False
+    thinking_default_on: bool = False
+    disabled_thinking_max_effort: Effort | None = None
     supports_effort: bool = True
     supports_thinking: bool = True
     # Gemini exposes reasoning depth as one discrete dial (thinkingLevel); these
@@ -95,6 +114,24 @@ class ModelInfo(BaseModel):
     # offered to new picks. Deprecate an old model instead of deleting it so
     # campaigns already on it keep working.
     deprecated: bool = False
+
+    def priced(self, as_of: date | None = None) -> ModelInfo:
+        """Apply announced price changes without altering saved model identities."""
+        today = as_of or datetime.now(UTC).date()
+        applicable = [change for change in self.price_changes if change.effective_from <= today]
+        if not applicable:
+            return self
+        change = max(applicable, key=lambda item: item.effective_from)
+        return self.model_copy(update=change.model_dump(exclude={"effective_from"}))
+
+    def rates(self, input_tokens: int) -> tuple[float, float]:
+        model = self.priced()
+        if self.long_context_threshold is not None and input_tokens > self.long_context_threshold:
+            return (
+                model.input_per_mtok * self.long_context_input_multiplier,
+                model.output_per_mtok * self.long_context_output_multiplier,
+            )
+        return model.input_per_mtok, model.output_per_mtok
 
 
 def infer_provider(model_id: str) -> str:
@@ -114,7 +151,7 @@ class ModelRegistry(BaseModel):
     def get(self, model_id: str) -> ModelInfo:
         for m in self.models:
             if m.id == model_id:
-                return m
+                return m.priced()
         # Unknown id: assume a capable default so new models work without a code change.
         return ModelInfo(
             id=model_id,
@@ -130,7 +167,7 @@ class ModelRegistry(BaseModel):
     def visible(self) -> list[ModelInfo]:
         """Models to offer in pick lists: everything except deprecated ones.
         Deprecated models stay resolvable via ``get`` but aren't advertised."""
-        return [m for m in self.models if not m.deprecated]
+        return [m.priced() for m in self.models if not m.deprecated]
 
     def provider_for(self, model_id: str) -> str:
         """The backend that serves ``model_id``: the seam's single source of
@@ -185,6 +222,9 @@ ContentBlock = TextBlock | ThinkingBlock | RedactedThinkingBlock | ToolUseBlock 
 class Message(BaseModel):
     role: Literal["user", "assistant"]
     content: list[ContentBlock]
+    # Optional native blocks for lossless replay within a live tool loop. These
+    # stay in memory and are never part of the public narration or saved history.
+    provider_content: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     # Ask the adapter to place a cache breakpoint at the end of this message. Set on
     # the byte-stable boundaries of the assembled prompt (the context head, and the
     # last replayed-history message before the volatile foot) so a provider that
@@ -292,6 +332,8 @@ class PTurnDone(BaseModel):
     type: Literal["turn_done"] = "turn_done"
     stop_reason: StopReason
     usage: Usage = Field(default_factory=Usage)
+    # Preserve the returned block order and opaque reasoning even with no text.
+    message: Message | None = None
 
 
 ProviderEvent = (

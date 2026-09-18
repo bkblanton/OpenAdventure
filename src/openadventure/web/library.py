@@ -179,7 +179,8 @@ class LibraryJobManager:
 
         visible_ids = {entry.id for entry in self.models.visible}
         chosen = model or resolve_utility_settings(self.config).model
-        if model is not None and chosen not in visible_ids:
+        saved_model = resolve_utility_settings(self.config).model
+        if model is not None and chosen not in visible_ids and chosen != saved_model:
             raise LibraryJobError(f"Unknown model {chosen!r}.")
         settings = resolve_utility_settings(self.config).merged({"model": chosen})
         provider_name = self.models.provider_for(chosen)

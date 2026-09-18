@@ -54,7 +54,8 @@ def test_model_show_returns_payload_not_messages(make_session):
     assert isinstance(result.data, commands.ModelList)
     assert result.data.current == session.settings.model
     ids = {model.id for model in result.data.models}
-    assert "gemini-3.6-flash" in ids
+    assert "gemini-3.8-flash" in ids
+    assert "gemini-3.6-flash" not in ids
     assert "gemini-3.5-flash" not in ids
     assert "gemini-3.1-pro-preview" not in ids
 

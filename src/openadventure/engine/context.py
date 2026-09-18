@@ -152,7 +152,8 @@ def estimate_prompt_cost(
         int(COMPACTION_TRIGGER_FRACTION * budget.tail_for(non_tail_tokens)) + non_tail_tokens
     )
     out = TYPICAL_OUTPUT_THINKING if settings.thinking else TYPICAL_OUTPUT_PLAIN
-    return (peak_input * model.input_per_mtok + out * model.output_per_mtok) / 1_000_000
+    input_rate, output_rate = model.rates(peak_input)
+    return (peak_input * input_rate + out * output_rate) / 1_000_000
 
 
 def _cap_args(value: object, limit: int = 300) -> object:

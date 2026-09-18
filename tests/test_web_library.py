@@ -107,7 +107,13 @@ async def test_bootstrap_exposes_model_catalog_and_template_summary(web_client):
     }
     assert payload["models"]
     model_ids = {model["id"] for model in payload["models"]}
-    assert "gemini-3.6-flash" in model_ids
+    assert "gemini-3.8-flash" in model_ids
+    assert "gemini-3.6-flash" not in model_ids
+    assert "claude-fable-5-1" in model_ids
+    assert "claude-opus-5" in model_ids
+    assert "gpt-6-astra" in model_ids
+    assert "claude-fable-5" not in model_ids
+    assert "claude-opus-4-8" not in model_ids
     assert "gemini-3.5-flash" not in model_ids
     assert "gemini-3.1-pro-preview" not in model_ids
     assert all(
@@ -303,6 +309,32 @@ async def test_failed_ingest_cleans_staging_and_releases_book(web_client, monkey
     retried = await _upload(client, "Broken.md", b"# Fixed", name="Broken Rules")
     assert retried.status_code == 202
     assert (await _wait_for_job(client, retried.json()["id"]))["status"] == "succeeded"
+
+
+@pytest.mark.parametrize("model_id", ["claude-fable-5", "claude-opus-4-8", "gemini-3.6-flash"])
+async def test_template_job_accepts_saved_deprecated_model(web_client, monkeypatch, model_id):
+    app, client = web_client
+    _ingested_book(app.state.workspace, "legacy-rules")
+    app.state.config.utility = {"model": model_id}
+    monkeypatch.setattr(library_module, "resolve_api_key", lambda *_args: "test-key")
+    monkeypatch.setattr(library_module, "build_provider", lambda *_args: object())
+
+    async def derive(_provider, settings, directory, source_name, on_progress=None):
+        assert settings.model == model_id
+        template = {"name": f"{source_name}/character", "fields": [], "resources": []}
+        snapshots.save_json(directory / "templates" / "character.json", template)
+        return template
+
+    monkeypatch.setattr(library_module.template_gen, "derive_template", derive)
+    accepted = await client.post(
+        "/api/library/books/legacy-rules/template", json={"model": model_id}
+    )
+    assert accepted.status_code == 202
+    completed = await _wait_for_job(client, accepted.json()["id"])
+    assert completed["status"] == "succeeded"
+    assert completed["result"]["model"] == model_id
+    models = (await client.get("/api/bootstrap")).json()["models"]
+    assert model_id not in {model["id"] for model in models}
 
 
 async def test_template_job_progress_success_and_overwrite(web_client, monkeypatch):

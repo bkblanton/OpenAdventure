@@ -102,16 +102,17 @@ def resolve_utility_settings(config: AppConfig) -> GenerationSettings:
 def estimate_cost(usage: Usage, model: ModelInfo) -> float:
     """Rough USD cost for ``usage`` at ``model``'s per-MTok rates.
 
-    Cache reads bill at a tenth of the input rate and cache writes at 1.25x, the
-    Anthropic pricing convention; Gemini and OpenAI report no cache-write tokens
-    (their prefix caches are implicit), so that term is zero for them. Output
+    Cache rates and long-context premiums are model-specific. Output
     already includes reasoning/thinking tokens across all three backends. A model
     with unknown pricing (rates 0.0) yields 0.0."""
+    input_rate, output_rate = model.rates(
+        usage.input_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens
+    )
     return (
-        usage.input_tokens * model.input_per_mtok
-        + usage.cache_creation_input_tokens * model.input_per_mtok * 1.25
-        + usage.cache_read_input_tokens * model.input_per_mtok * 0.10
-        + usage.output_tokens * model.output_per_mtok
+        usage.input_tokens * input_rate
+        + usage.cache_creation_input_tokens * input_rate * model.cache_write_multiplier
+        + usage.cache_read_input_tokens * input_rate * model.cache_read_multiplier
+        + usage.output_tokens * output_rate
     ) / 1_000_000
 
 
@@ -1518,13 +1519,13 @@ class GameSession:
             per["cost_usd"] = round(per.get("cost_usd", 0.0) + cost_delta["text"], 6)
         snapshots.save_json(self.campaign.usage_path, data)
 
-    def accrue_usage(self, usage: Usage) -> None:
+    def accrue_usage(self, usage: Usage, *, cost_usd: float | None = None) -> None:
         """Accrue one completed model response, with thinking already included."""
 
         model = self.models.get(self.settings.model)
         self._accrue(
             usage,
-            cost_delta={"text": estimate_cost(usage, model)},
+            cost_delta={"text": estimate_cost(usage, model) if cost_usd is None else cost_usd},
             model_id=self.settings.model,
         )
 

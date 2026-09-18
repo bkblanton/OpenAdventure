@@ -299,7 +299,7 @@ async def test_stream_maps_function_call_and_reasoning():
 async def test_stream_reports_max_tokens_when_incomplete():
     events = [
         {
-            "type": "response.completed",
+            "type": "response.incomplete",
             "response": {
                 "status": "incomplete",
                 "incomplete_details": {"reason": "max_output_tokens"},

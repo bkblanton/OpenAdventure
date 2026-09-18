@@ -43,7 +43,7 @@ def test_deprecated_models_resolve_but_are_hidden_from_lists():
     assert "gemini-3.5-flash" not in visible_ids
     assert "gemini-3.1-pro-preview" not in visible_ids
     assert "claude-sonnet-5" in visible_ids
-    assert "gemini-3.6-flash" in visible_ids
+    assert "gemini-3.8-flash" in visible_ids
 
 
 def test_registry_unknown_model_gets_safe_defaults():

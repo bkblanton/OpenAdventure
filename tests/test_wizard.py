@@ -838,7 +838,7 @@ def test_template_wizard_in_game_reuses_table_model_without_prompt(config, monke
 
 def test_template_wizard_lets_you_pick_a_model(config, monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    monkeypatch.setattr("builtins.input", lambda prompt: "claude-opus-4-8")
+    monkeypatch.setattr("builtins.input", lambda prompt: "claude-opus-5")
     asked = {}
 
     def fake_ensure(console, cfg, provider):
@@ -855,7 +855,7 @@ def test_template_wizard_lets_you_pick_a_model(config, monkeypatch):
 
     assert result is not None
     _provider, settings = result
-    assert settings.model == "claude-opus-4-8"  # the picked model
+    assert settings.model == "claude-opus-5"  # the picked model
     assert settings.thinking is True and settings.effort.value == "high"  # effort kept
     assert asked["provider"] == "anthropic"  # key for the chosen model's backend
 

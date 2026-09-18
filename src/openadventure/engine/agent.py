@@ -176,6 +176,8 @@ async def run_turn(
       ``/sudo --quiet`` directive is ``ephemeral`` but NOT ``read_only``; it is
       meant to mutate state quietly, so it keeps the full toolset.
     """
+    from openadventure.engine.session import estimate_cost
+
     log = session.log
     # A read-only turn (/btw) is restricted to read-only tools (dispatch enforces
     # it via ctx.read_only) and its lookups leave no tool_call trace.
@@ -205,6 +207,7 @@ async def run_turn(
 
     narration_parts: list[str] = []
     total_usage = Usage()
+    total_cost = 0.0
     rounds = 0
 
     while True:
@@ -277,6 +280,7 @@ async def run_turn(
                         }
                     )
             total_usage = total_usage.add(usage)
+            total_cost += estimate_cost(usage, session.models.get(session.settings.model))
         for background_event in session.background.drain():
             yield background_event
 
@@ -293,7 +297,11 @@ async def run_turn(
         assistant_content.extend(
             ToolUseBlock(id=tu.id, name=tu.name, input=tu.input) for tu in tool_uses
         )
-        convo.append(Message(role="assistant", content=assistant_content))
+        # Native responses must keep their original block order and text, even
+        # when that text is hidden from the player. Fable 5.1 binds reasoning
+        # signatures to the exact preceding conversation.
+        replay_message = stop.message if stop is not None else None
+        convo.append(replay_message or Message(role="assistant", content=assistant_content))
 
         result_blocks: list[ToolResultBlock | TextBlock] = []
         # Dispatch the whole round at once: read-only tools run concurrently off
@@ -343,7 +351,7 @@ async def run_turn(
         # character creation, scene changes) without the player ever seeing it and
         # without it polluting the narration register. Trailing text, like the blocks
         # below, so it never precedes the tool_result blocks.
-        if suppress_tool_round_text and text_acc.strip():
+        if suppress_tool_round_text and text_acc.strip() and replay_message is None:
             result_blocks.append(
                 TextBlock(text=WORKING_NOTES_TEMPLATE.format(text=text_acc.strip()))
             )
@@ -371,7 +379,7 @@ async def run_turn(
             yield started
     else:
         session.tool_ctx.sound_effect_cues.clear()
-    session.accrue_usage(total_usage)
+    session.accrue_usage(total_usage, cost_usd=total_cost)
     yield TurnCompleted(
         turn_id=turn_id,
         usage=total_usage,

@@ -11,6 +11,7 @@ from typing import Any
 import anthropic
 
 from openadventure.providers.base import (
+    Effort,
     GenerationSettings,
     Message,
     ModelRegistry,
@@ -23,9 +24,13 @@ from openadventure.providers.base import (
     PToolUse,
     PToolUseStart,
     PTurnDone,
+    RedactedThinkingBlock,
     StopReason,
     SystemBlock,
+    TextBlock,
+    ThinkingBlock,
     ToolDef,
+    ToolUseBlock,
     Usage,
 )
 
@@ -132,11 +137,20 @@ def _request_kwargs(
     }
     if tools:
         kwargs["tools"] = [t.model_dump() for t in tools]
-    if settings.thinking and model.supports_thinking:
+    effort = settings.effort
+    if model.thinking_always_on:
         kwargs["thinking"] = {"type": "adaptive"}
+        if not settings.thinking:
+            effort = Effort.low
+    elif settings.thinking and model.supports_thinking:
+        kwargs["thinking"] = {"type": "adaptive"}
+    elif model.thinking_default_on:
+        kwargs["thinking"] = {"type": "disabled"}
+        if model.disabled_thinking_max_effort is not None and effort == Effort.max:
+            effort = model.disabled_thinking_max_effort
     output_config: dict[str, Any] = {}
     if model.supports_effort:
-        output_config["effort"] = settings.effort.value
+        output_config["effort"] = effort.value
     if output_config:
         # via extra_body for forward-compat with SDKs lacking the typed param
         kwargs["extra_body"] = {"output_config": output_config}
@@ -178,7 +192,8 @@ class AnthropicProvider:
                     ):
                         # Live reasoning for progress display; the completed
                         # block is re-emitted below from get_final_message().
-                        yield PThinkingDelta(thinking=event.delta.thinking)
+                        if event.delta.thinking:
+                            yield PThinkingDelta(thinking=event.delta.thinking)
                     elif (
                         event.type == "content_block_start"
                         and getattr(event.content_block, "type", "") == "tool_use"
@@ -202,14 +217,24 @@ class AnthropicProvider:
             raise ProviderError("Could not reach the Anthropic API (network error).") from exc
 
         thinking_tokens_est = 0
+        message = Message(role="assistant", content=[])
         for block in final.content:
             if block.type == "thinking":
                 thinking_tokens_est += _estimated_tokens(block.thinking)
+                message.content.append(
+                    ThinkingBlock(thinking=block.thinking, signature=block.signature or "")
+                )
                 yield PThinking(thinking=block.thinking, signature=block.signature or "")
             elif block.type == "redacted_thinking":
+                message.content.append(RedactedThinkingBlock(data=block.data))
                 yield PRedactedThinking(data=block.data)
             elif block.type == "tool_use":
+                message.content.append(
+                    ToolUseBlock(id=block.id, name=block.name, input=dict(block.input or {}))
+                )
                 yield PToolUse(id=block.id, name=block.name, input=dict(block.input or {}))
+            elif block.type == "text":
+                message.content.append(TextBlock(text=block.text))
 
         usage = Usage(
             input_tokens=final.usage.input_tokens,
@@ -221,4 +246,6 @@ class AnthropicProvider:
             # thinking subset from the completed block.
             thinking_tokens=min(thinking_tokens_est, final.usage.output_tokens),
         )
-        yield PTurnDone(stop_reason=_STOP_REASONS.get(final.stop_reason, "other"), usage=usage)
+        yield PTurnDone(
+            stop_reason=_STOP_REASONS.get(final.stop_reason, "other"), usage=usage, message=message
+        )

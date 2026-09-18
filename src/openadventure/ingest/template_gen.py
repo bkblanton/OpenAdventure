@@ -198,7 +198,7 @@ async def derive_template(
                     case "thinking_delta":
                         # Fill the long pre-tool-call wait with live reasoning,
                         # rolling forward one sentence at a time.
-                        if not calls:
+                        if not calls and event.thinking:
                             think_acc += event.thinking
                             report(f"{round_label}: {_live_sentence(think_acc, 120)}")
                     case "thinking":
@@ -229,7 +229,7 @@ async def derive_template(
         assistant_content.extend(
             ToolUseBlock(id=tu.id, name=tu.name, input=tu.input) for tu in tool_uses
         )
-        convo.append(Message(role="assistant", content=assistant_content))
+        convo.append(stop.message or Message(role="assistant", content=assistant_content))
         results: list[ToolResultBlock | TextBlock] = []
         for tu in tool_uses:
             outcome = registry.dispatch(ctx, tu.name, tu.input)
