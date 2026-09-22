@@ -34,17 +34,24 @@ def test_visible_models_and_saved_replacements(make_session):
     registry = ModelRegistry.load_default()
     assert {model.id for model in registry.visible} == {
         "claude-fable-5-1",
-        "claude-opus-5",
+        "claude-opus-5-5",
         "claude-sonnet-5",
         "claude-haiku-4-5",
         "gemini-3.8-flash",
         "gpt-6-astra",
+        "gpt-6-sol",
+        "gpt-6-luna",
+    }
+    session = make_session(script=[])
+    for model_id in (
+        "claude-fable-5",
+        "claude-opus-4-8",
+        "gemini-3.6-flash",
+        "claude-opus-5",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
-    }
-    session = make_session(script=[])
-    for model_id in ("claude-fable-5", "claude-opus-4-8", "gemini-3.6-flash"):
+    ):
         assert registry.get(model_id).deprecated
         session.set_override("model", model_id)
         assert session.settings.model == model_id
@@ -79,6 +86,48 @@ def test_fable_cache_reads_and_astra_long_context_pricing():
 
 
 @pytest.mark.parametrize(
+    "model_id,input_rate,output_rate,read_rate,write_rate",
+    [
+        ("claude-opus-5-5", 4, 20, 0.2, 5),
+        ("gpt-6-sol", 2, 10, 0.2, 2.5),
+        ("gpt-6-luna", 0.1, 0.5, 0.01, 0.125),
+    ],
+)
+def test_new_model_standard_pricing(model_id, input_rate, output_rate, read_rate, write_rate):
+    model = ModelRegistry.load_default().get(model_id)
+    # Separate usage buckets also ensure reasoning is not billed twice.
+    usage = Usage(
+        input_tokens=1_000,
+        output_tokens=1_000,
+        thinking_tokens=800,
+        cache_read_input_tokens=1_000,
+        cache_creation_input_tokens=1_000,
+    )
+    assert estimate_cost(usage, model) == pytest.approx(
+        (input_rate + output_rate + read_rate + write_rate) / 1_000
+    )
+    assert model.input_per_mtok * model.cache_read_multiplier == pytest.approx(read_rate)
+    assert model.input_per_mtok * model.cache_write_multiplier == pytest.approx(write_rate)
+
+
+@pytest.mark.parametrize("model_id,scale", [("gpt-6-sol", 1), ("gpt-6-luna", 0.05)])
+def test_new_openai_long_context_pricing(model_id, scale):
+    model = ModelRegistry.load_default().get(model_id)
+    assert estimate_cost(Usage(input_tokens=272_000, output_tokens=1_000), model) == pytest.approx(
+        0.554 * scale
+    )
+    # Cached tokens push the whole request across the boundary, including cache writes.
+    usage = Usage(
+        input_tokens=1,
+        cache_read_input_tokens=271_000,
+        cache_creation_input_tokens=1_000,
+        output_tokens=1_000,
+    )
+    assert estimate_cost(usage, model) == pytest.approx(0.128404 * scale)
+
+
+@pytest.mark.parametrize("model_id", ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"])
+@pytest.mark.parametrize(
     "thinking,effort,expected",
     [
         (False, Effort.max, "low"),
@@ -87,13 +136,15 @@ def test_fable_cache_reads_and_astra_long_context_pricing():
         (True, Effort.max, "max"),
     ],
 )
-def test_astra_request_uses_supported_reasoning(thinking, effort, expected):
+def test_gpt6_request_uses_supported_reasoning(model_id, thinking, effort, expected):
+    if not thinking and model_id != "gpt-6-astra":
+        expected = "none"
     body = OpenAIProvider("test")._request_body(
         system=[],
         messages=[],
         tools=[],
         settings=GenerationSettings(
-            model="gpt-6-astra", thinking=thinking, effort=effort, max_tokens=200_000
+            model=model_id, thinking=thinking, effort=effort, max_tokens=200_000
         ),
     )
     assert body["reasoning"]["effort"] == expected
@@ -128,6 +179,8 @@ def test_openai_cache_writes_are_not_double_counted():
     [
         ("claude-fable-5-1", False, Effort.max, "adaptive", "low"),
         ("claude-fable-5-1", True, Effort.max, "adaptive", "max"),
+        ("claude-opus-5-5", False, Effort.max, "adaptive", "low"),
+        ("claude-opus-5-5", True, Effort.max, "adaptive", "max"),
         ("claude-opus-5", False, Effort.max, "disabled", "high"),
         ("claude-opus-5", False, Effort.low, "disabled", "low"),
         ("claude-opus-5", True, Effort.max, "adaptive", "max"),
@@ -145,7 +198,8 @@ def test_claude_thinking_and_effort_constraints(model, thinking, effort, kind, e
     assert body["extra_body"]["output_config"]["effort"] == effective
 
 
-async def test_anthropic_sdk_preserves_empty_signed_blocks_in_order():
+@pytest.mark.parametrize("model_id", ["claude-fable-5-1", "claude-opus-5-5"])
+async def test_anthropic_sdk_preserves_empty_signed_blocks_in_order(model_id):
     # Exercise the real SDK's SSE parser, including empty thinking deltas.
     events = [
         {
@@ -154,7 +208,7 @@ async def test_anthropic_sdk_preserves_empty_signed_blocks_in_order():
                 "id": "msg_test",
                 "type": "message",
                 "role": "assistant",
-                "model": "claude-fable-5-1",
+                "model": model_id,
                 "content": [],
                 "stop_reason": None,
                 "stop_sequence": None,
@@ -215,7 +269,7 @@ async def test_anthropic_sdk_preserves_empty_signed_blocks_in_order():
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         provider = AnthropicProvider("test")
         provider.client = anthropic.AsyncAnthropic(api_key="test", http_client=client)
-        settings = GenerationSettings(model="claude-fable-5-1")
+        settings = GenerationSettings(model=model_id)
         result = [
             event
             async for event in provider.stream_turn(
@@ -251,7 +305,7 @@ async def test_anthropic_sdk_preserves_empty_signed_blocks_in_order():
             "tool_use",
         ]
         assert replay[0] == {"type": "thinking", "thinking": "", "signature": "opaque-0"}
-        assert requests[0]["model"] == "claude-fable-5-1"
+        assert requests[0]["model"] == model_id
 
 
 async def test_gemini_native_replay_preserves_signature_only_parts_and_call_ids(monkeypatch):
@@ -367,7 +421,8 @@ async def test_engine_preserves_provider_message_and_hides_it_from_player(make_s
 
 
 @pytest.mark.parametrize("summary", [None, []])
-async def test_astra_encrypted_reasoning_without_summary_round_trips(monkeypatch, summary):
+@pytest.mark.parametrize("model_id", ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"])
+async def test_gpt6_encrypted_reasoning_without_summary_round_trips(monkeypatch, summary, model_id):
     reasoning = {"type": "reasoning", "id": "rs_opaque", "encrypted_content": "encrypted-only"}
     if summary is not None:
         reasoning["summary"] = summary
@@ -403,7 +458,7 @@ async def test_astra_encrypted_reasoning_without_summary_round_trips(monkeypatch
     events = [
         event
         async for event in provider.stream_turn(
-            system=[], messages=[], tools=[], settings=GenerationSettings(model="gpt-6-astra")
+            system=[], messages=[], tools=[], settings=GenerationSettings(model=model_id)
         )
     ]
     thinking = next(event for event in events if event.type == "thinking")

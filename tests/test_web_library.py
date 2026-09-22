@@ -110,7 +110,9 @@ async def test_bootstrap_exposes_model_catalog_and_template_summary(web_client):
     assert "gemini-3.8-flash" in model_ids
     assert "gemini-3.6-flash" not in model_ids
     assert "claude-fable-5-1" in model_ids
-    assert "claude-opus-5" in model_ids
+    assert "claude-opus-5-5" in model_ids
+    assert {"gpt-6-sol", "gpt-6-luna"} <= model_ids
+    assert not {"claude-opus-5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} & model_ids
     assert "gpt-6-astra" in model_ids
     assert "claude-fable-5" not in model_ids
     assert "claude-opus-4-8" not in model_ids
@@ -346,7 +348,7 @@ async def test_template_job_progress_success_and_overwrite(web_client, monkeypat
     async def derive_template(_provider, settings, directory, source_name, on_progress=None):
         assert directory == source_dir
         assert source_name == "template-rules"
-        assert settings.model == "gpt-5.6-terra"
+        assert settings.model == "gpt-6-sol"
         on_progress("Round 3/16: Searching for character creation rules")
         on_progress("Round 3/16: It")
         on_progress("Round 3/16: It looks")
@@ -372,7 +374,7 @@ async def test_template_job_progress_success_and_overwrite(web_client, monkeypat
     assert completed["result"] == {
         "fields": 2,
         "resources": 1,
-        "model": "gpt-5.6-terra",
+        "model": "gpt-6-sol",
     }
     round_events = [event for event in completed["events"] if event["round"] == 3]
     assert len(round_events) == 1

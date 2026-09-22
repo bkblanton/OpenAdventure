@@ -610,11 +610,11 @@ async def test_usage_accrual_and_report(make_session):
     assert report["totals"]["input_tokens"] == 3000
     assert report["totals"]["output_tokens"] == 500
     assert report["session"]["input_tokens"] == 3000
-    # default model is gpt-5.6-terra: 3000/1M*2 + 500/1M*12 = 0.006 + 0.006
-    assert report["cost_usd"] == pytest.approx(0.012, abs=1e-6)
-    assert "gpt-5.6-terra" in report["by_model"]
+    # default model is gpt-6-sol: 3000/1M*2 + 500/1M*10 = 0.006 + 0.005
+    assert report["cost_usd"] == pytest.approx(0.011, abs=1e-6)
+    assert "gpt-6-sol" in report["by_model"]
     # one session, one model -> the session cost matches the campaign cost
-    assert report["session_cost_usd"] == pytest.approx(0.012, abs=1e-6)
+    assert report["session_cost_usd"] == pytest.approx(0.011, abs=1e-6)
 
 
 def test_assistant_mode_system_prompt(config, workspace):
