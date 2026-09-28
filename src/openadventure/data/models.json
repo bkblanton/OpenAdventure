@@ -93,6 +93,18 @@
       "provider": "openai"
     },
     {
+      "id": "claude-sonnet-5-5",
+      "display_name": "Claude Sonnet 5.5",
+      "context_window": 1000000,
+      "max_output": 128000,
+      "input_per_mtok": 2.0,
+      "output_per_mtok": 10.0,
+      "thinking_default_on": true,
+      "disabled_thinking_type": "between_tools",
+      "disabled_thinking_max_effort": "high",
+      "provider": "anthropic"
+    },
+    {
       "id": "claude-sonnet-5",
       "display_name": "Claude Sonnet 5",
       "context_window": 1000000,
@@ -101,7 +113,8 @@
       "output_per_mtok": 15.0,
       "supports_effort": true,
       "supports_thinking": true,
-      "provider": "anthropic"
+      "provider": "anthropic",
+      "deprecated": true
     },
     {
       "id": "claude-haiku-4-5",

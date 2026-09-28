@@ -145,7 +145,7 @@ def _request_kwargs(
     elif settings.thinking and model.supports_thinking:
         kwargs["thinking"] = {"type": "adaptive"}
     elif model.thinking_default_on:
-        kwargs["thinking"] = {"type": "disabled"}
+        kwargs["thinking"] = {"type": model.disabled_thinking_type}
         if model.disabled_thinking_max_effort is not None and effort == Effort.max:
             effort = model.disabled_thinking_max_effort
     output_config: dict[str, Any] = {}

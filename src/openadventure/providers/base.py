@@ -96,6 +96,8 @@ class ModelInfo(BaseModel):
     requires_tool_call_ids: bool = False
     thinking_always_on: bool = False
     thinking_default_on: bool = False
+    # Some models keep tool-round thinking even when up-front thinking is off.
+    disabled_thinking_type: Literal["disabled", "between_tools"] = "disabled"
     disabled_thinking_max_effort: Effort | None = None
     supports_effort: bool = True
     supports_thinking: bool = True

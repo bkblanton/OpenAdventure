@@ -35,7 +35,7 @@ def test_visible_models_and_saved_replacements(make_session):
     assert {model.id for model in registry.visible} == {
         "claude-fable-5-1",
         "claude-opus-5-5",
-        "claude-sonnet-5",
+        "claude-sonnet-5-5",
         "claude-haiku-4-5",
         "gemini-3.8-flash",
         "gpt-6-astra",
@@ -44,6 +44,7 @@ def test_visible_models_and_saved_replacements(make_session):
     }
     session = make_session(script=[])
     for model_id in (
+        "claude-sonnet-5",
         "claude-fable-5",
         "claude-opus-4-8",
         "gemini-3.6-flash",
@@ -89,6 +90,7 @@ def test_fable_cache_reads_and_astra_long_context_pricing():
     "model_id,input_rate,output_rate,read_rate,write_rate",
     [
         ("claude-opus-5-5", 4, 20, 0.2, 5),
+        ("claude-sonnet-5-5", 2, 10, 0.2, 2.5),
         ("gpt-6-sol", 2, 10, 0.2, 2.5),
         ("gpt-6-luna", 0.1, 0.5, 0.01, 0.125),
     ],
@@ -184,6 +186,12 @@ def test_openai_cache_writes_are_not_double_counted():
         ("claude-opus-5", False, Effort.max, "disabled", "high"),
         ("claude-opus-5", False, Effort.low, "disabled", "low"),
         ("claude-opus-5", True, Effort.max, "adaptive", "max"),
+        ("claude-sonnet-5-5", False, Effort.low, "between_tools", "low"),
+        ("claude-sonnet-5-5", False, Effort.medium, "between_tools", "medium"),
+        ("claude-sonnet-5-5", False, Effort.high, "between_tools", "high"),
+        ("claude-sonnet-5-5", False, Effort.max, "between_tools", "high"),
+        ("claude-sonnet-5-5", True, Effort.high, "adaptive", "high"),
+        ("claude-sonnet-5-5", True, Effort.max, "adaptive", "max"),
     ],
 )
 def test_claude_thinking_and_effort_constraints(model, thinking, effort, kind, effective):
@@ -198,7 +206,7 @@ def test_claude_thinking_and_effort_constraints(model, thinking, effort, kind, e
     assert body["extra_body"]["output_config"]["effort"] == effective
 
 
-@pytest.mark.parametrize("model_id", ["claude-fable-5-1", "claude-opus-5-5"])
+@pytest.mark.parametrize("model_id", ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5"])
 async def test_anthropic_sdk_preserves_empty_signed_blocks_in_order(model_id):
     # Exercise the real SDK's SSE parser, including empty thinking deltas.
     events = [

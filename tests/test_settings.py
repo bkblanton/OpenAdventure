@@ -14,8 +14,9 @@ from openadventure.providers.base import (
 
 def test_registry_loads_and_has_models():
     registry = ModelRegistry.load_default()
-    sonnet = registry.get("claude-sonnet-5")
+    sonnet = registry.get("claude-sonnet-5-5")
     assert sonnet.context_window == 1_000_000
+    assert sonnet.max_output == 128_000
     assert sonnet.supports_effort
     fable = registry.get("claude-fable-5")
     assert fable.supports_thinking
@@ -42,7 +43,8 @@ def test_deprecated_models_resolve_but_are_hidden_from_lists():
     assert "claude-sonnet-4-6" not in visible_ids
     assert "gemini-3.5-flash" not in visible_ids
     assert "gemini-3.1-pro-preview" not in visible_ids
-    assert "claude-sonnet-5" in visible_ids
+    assert "claude-sonnet-5" not in visible_ids
+    assert "claude-sonnet-5-5" in visible_ids
     assert "gemini-3.8-flash" in visible_ids
 
 
